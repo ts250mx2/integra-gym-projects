@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
 
             let branchId = user.IdSucursal;
             let branchName = user.Sucursal;
+            console.log('User', user);
 
             // SPECIAL LOGIC FOR SUPER ADMIN (EsAdministrador = 2)
             if (user.EsAdministrador === 2) {
@@ -104,7 +105,8 @@ export async function POST(req: NextRequest) {
                 // If 0 active branches? Keep user default or 0? user.IdSucursal might be valid even if status=0 logic fails? 
                 // Let's stick to the requested logic: "if only exists one... else... drilldown".
             }
-
+            console.log('Branch ID', branchId);
+            console.log('Branch Name', branchName);
             // Sync Schema before session creation
             if (user.BaseDatos) {
                 await syncDatabaseSchema(user.BaseDatos);
