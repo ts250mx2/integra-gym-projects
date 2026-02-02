@@ -22,8 +22,10 @@ export default async function Header() {
         }}>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo.JPG" alt="Integra Members Logo" style={{ height: '80px', width: 'auto', borderRadius: '5px' }} />
-
+                {/*<img src="/logo.JPG" alt="Integra Members Logo" style={{ height: '80px', width: 'auto', borderRadius: '5px' }} />*/}
+                <Link href="/" style={{ textDecoration: 'none' }}>
+                    <span className="neon-text" style={{ fontSize: '1.2rem', fontWeight: 'bold', cursor: 'pointer' }}>INTEGRA MEMBERS</span>
+                </Link>
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
