@@ -22,7 +22,9 @@
         "passwordsDoNotMatch": "Passwords do not match",
         "gymExistsError": "A project with this name already exists",
         "registrationSuccess": "Registration successful",
-        "registrationError": "Registration error: "
+        "registrationError": "Registration error: ",
+        "serverError": "Server error. Please try again later.",
+        "invalidCredentials": "Invalid credentials"
     },
     "Common": {
         "address1": "Address 1",

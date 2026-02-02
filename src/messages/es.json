@@ -52,7 +52,9 @@
     "passwordsDoNotMatch": "Las contraseñas no coinciden",
     "gymExistsError": "Ya existe un proyecto con este nombre",
     "registrationSuccess": "Registro completado con éxito",
-    "registrationError": "Error al registrar: "
+    "registrationError": "Error al registrar: ",
+    "serverError": "Error del servidor. Intente más tarde.",
+    "invalidCredentials": "Credenciales inválidas"
   },
   "Common": {
     "address1": "Dirección 1",
