@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
         const cookieStore = await cookies();
         cookieStore.set('session', JSON.stringify(sessionData), {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
+            secure: false, // process.env.NODE_ENV === 'production', // Disabled for now to allow HTTP production
             sameSite: 'lax',
             maxAge: 60 * 60 * 24, // 1 day
             path: '/',
