@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
         // as I don't want to break the flow with imports or scope issues.
         // Actually, for standard flow, it was doing `if (user.BaseDatos) sync...`
         // I'll omit for now for .IM flow or add it if easy.
-
+        console.log('Login success');
         return NextResponse.json({ success: true });
     } catch (error: any) {
         console.error('Login error:', error);

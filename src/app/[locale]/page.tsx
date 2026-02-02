@@ -7,8 +7,12 @@ export default async function IndexPage() {
   const f = await getTranslations('Features');
 
   const features = [
-
     {
+      id: 'ai',
+      title: f('ai.title'),
+      desc: f('ai.desc'),
+      image: '/features/ai.png'
+    }, {
       id: 'members',
       title: f('members.title'),
       desc: f('members.desc'),
@@ -43,13 +47,8 @@ export default async function IndexPage() {
       title: f('support.title'),
       desc: f('support.desc'),
       image: '/features/support.png'
-    },
-    {
-      id: 'ai',
-      title: f('ai.title'),
-      desc: f('ai.desc'),
-      image: '/features/ai.png'
     }
+
   ];
 
   return (
