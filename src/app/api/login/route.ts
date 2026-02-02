@@ -110,6 +110,7 @@ export async function POST(req: NextRequest) {
                 await syncDatabaseSchema(user.BaseDatos);
             }
 
+            console.log('Session data', sessionData);
             sessionData = {
                 userId: user.IdUsuario,
                 userName: user.Usuario,
@@ -127,6 +128,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'invalidCredentials' }, { status: 401 });
         }
 
+        console.log('Setting session cookie', sessionData);
         const cookieStore = await cookies();
         cookieStore.set('session', JSON.stringify(sessionData), {
             httpOnly: true,
