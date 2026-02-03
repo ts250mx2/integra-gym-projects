@@ -183,6 +183,7 @@ export default function AddressCapture({ initialData, onChange, readOnly = false
                         countrySelectProps={{ disabled: readOnly || disabledFields.includes('country') }}
                         className="phone-input-container"
                         placeholder="..."
+                        countryCallingCodeEditable={false}
                     />
                 </div>
 

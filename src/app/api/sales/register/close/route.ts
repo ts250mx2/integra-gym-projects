@@ -9,7 +9,12 @@ export async function POST(req: NextRequest) {
         if (!sessionCookie) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
         const session = JSON.parse(sessionCookie.value);
-        const { projectId, branchId, userId } = session;
+        let { projectId, branchId, userId, isAdmin } = session;
+
+        // Override Superuser ID to 1 for Project Operations
+        if (isAdmin === 2) {
+            userId = 1;
+        }
 
         const body = await req.json();
         const { idApertura } = body;
@@ -21,8 +26,8 @@ export async function POST(req: NextRequest) {
             projectId,
             `SELECT SUM(Total) as TotalSales 
              FROM tblVentas 
-             WHERE IdApertura = ? AND Status = 0`,
-            [idApertura]
+             WHERE IdApertura = ? AND IdSucursal = ? AND Status = 0`,
+            [idApertura, branchId]
         ) as any[];
 
         const totalSales = salesResult[0]?.TotalSales || 0;
@@ -31,7 +36,7 @@ export async function POST(req: NextRequest) {
         await projectQuery(
             projectId,
             `UPDATE tblAperturasCierres 
-             SET FechaCorte = NOW(), IdSupervisorCorte = ?, FechaAct = NOW()
+             SET FechaCorte = NOW(), IdUsuarioCorte = ?, FechaAct = NOW()
              WHERE IdApertura = ? AND IdSucursal = ?`,
             [userId, idApertura, branchId]
         );

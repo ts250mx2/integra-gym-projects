@@ -59,6 +59,10 @@ export async function PUT(req: NextRequest) {
 
         const { id, name, isAdmin } = await req.json();
 
+        if (id === 1) {
+            return NextResponse.json({ error: 'Cannot modify the main admin position' }, { status: 403 });
+        }
+
         await query(
             `UPDATE \`${dbName}\`.tblPuestos 
              SET Puesto = ?, EsAdministrador = ?, FechaAct = NOW() 
@@ -79,6 +83,10 @@ export async function DELETE(req: NextRequest) {
 
         const { searchParams } = new URL(req.url);
         const id = searchParams.get('id');
+
+        if (!id || parseInt(id) === 1) {
+            return NextResponse.json({ error: 'Cannot delete the main admin position' }, { status: 403 });
+        }
 
         await query(
             `UPDATE \`${dbName}\`.tblPuestos 

@@ -24,10 +24,9 @@ export async function GET(req: NextRequest) {
                         FechaApertura DATETIME DEFAULT NULL,
                         IdUsuarioApertura INT DEFAULT NULL,
                         FondoCaja DECIMAL(18,2) DEFAULT 0.00,
-                        IdUsuario INT DEFAULT NULL COMMENT 'IdSupervisorCorte or Closer',
+                        IdUsuarioCorte INT DEFAULT NULL,
                         FechaCorte DATETIME DEFAULT NULL,
                         FechaAct DATETIME DEFAULT NULL,
-                        IdSupervisorCorte INT DEFAULT 0,
                         PRIMARY KEY (IdApertura, IdSucursal)
                     )
                 `);
@@ -36,7 +35,7 @@ export async function GET(req: NextRequest) {
 
         // 2. Query Active Session
         // "SELECT IdApertura, Usuario, FechaApertura, FondoCaja FROM tblAperturasCierres A INNER JOIN tblUsuarios B ON A.IdUsuarioApertura = B.IdUsuario WHERE A.IdSucursal = {{SessionData.IdBranch}}"
-        // And check if open (IdSupervisorCorte = 0)
+        // And check if open (IdUsuarioCorte = 0)
 
         // 2. Query Active Session & Branch Details
         // Join with tblSucursales to get address info
@@ -51,7 +50,7 @@ export async function GET(req: NextRequest) {
              FROM tblAperturasCierres A 
              INNER JOIN tblUsuarios B ON A.IdUsuarioApertura = B.IdUsuario 
              INNER JOIN tblSucursales S ON A.IdSucursal = S.IdSucursal
-             WHERE A.IdSucursal = ? AND A.IdSupervisorCorte = 0`,
+             WHERE A.IdSucursal = ? AND A.IdUsuarioCorte = 0 ORDER BY A.IdApertura DESC LIMIT 1`,
             [branchId]
         ) as any[];
 

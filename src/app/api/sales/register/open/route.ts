@@ -9,7 +9,12 @@ export async function POST(req: NextRequest) {
         if (!sessionCookie) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
         const session = JSON.parse(sessionCookie.value);
-        const { projectId, branchId, userId } = session;
+        let { projectId, branchId, userId, isAdmin } = session;
+
+        // Override Superuser ID to 1 for Project Operations
+        if (isAdmin === 2) {
+            userId = 1;
+        }
 
         const body = await req.json();
         const { amount } = body; // FondoCaja
@@ -34,8 +39,8 @@ export async function POST(req: NextRequest) {
         await projectQuery(
             projectId,
             `INSERT INTO tblAperturasCierres 
-             (IdApertura, IdSucursal, FechaApertura, IdUsuarioApertura, FondoCaja, IdUsuario, FechaCorte, FechaAct, IdSupervisorCorte) 
-             VALUES (?, ?, NOW(), ?, ?, NULL, NULL, NOW(), 0)`,
+             (IdApertura, IdSucursal, FechaApertura, IdUsuarioApertura, FondoCaja, FechaAct, IdUsuarioCorte) 
+             VALUES (?, ?, NOW(), ?, ?, NOW(), 0)`,
             [nextId, branchId, userId, amount]
         );
 

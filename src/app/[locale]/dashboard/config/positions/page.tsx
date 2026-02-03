@@ -123,26 +123,35 @@ export default function PositionsPage() {
                                 </td>
                                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                                     <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
-                                        <button
-                                            onClick={() => handleOpenModal(pos)}
-                                            style={{
-                                                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                                                color: 'white', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center'
-                                            }}
-                                            title={t('edit')}
-                                        >
-                                            <Edit2 size={16} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDelete(pos.IdPuesto)}
-                                            style={{
-                                                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                                                color: '#ff4444', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center'
-                                            }}
-                                            title={tCommon('delete')}
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
+                                        {pos.IdPuesto !== 1 && (
+                                            <>
+                                                <button
+                                                    onClick={() => handleOpenModal(pos)}
+                                                    style={{
+                                                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                                                        color: 'white', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center'
+                                                    }}
+                                                    title={t('edit')}
+                                                >
+                                                    <Edit2 size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(pos.IdPuesto)}
+                                                    style={{
+                                                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                                                        color: '#ff4444', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center'
+                                                    }}
+                                                    title={tCommon('delete')}
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </>
+                                        )}
+                                        {pos.IdPuesto === 1 && (
+                                            <span style={{ fontSize: '0.8rem', opacity: 0.5, fontStyle: 'italic' }}>
+                                                System
+                                            </span>
+                                        )}
                                     </div>
                                 </td>
                             </tr>

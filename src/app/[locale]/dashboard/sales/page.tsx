@@ -1203,6 +1203,12 @@ export default function SalesPage() {
                             style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                             disabled={cart.length === 0}
                             onClick={() => {
+                                if (!registerStatus?.isOpen) {
+                                    alert("No hay una apertura de caja activa. La página se actualizará.");
+                                    window.location.reload();
+                                    return;
+                                }
+
                                 const hasMembership = cart.some(item => item.TipoCuota === 1);
                                 if (hasMembership && (isPublicGeneral || !selectedMember)) {
                                     alert("Para vender una membresía (Cuota), debe seleccionar un socio.");

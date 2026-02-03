@@ -279,6 +279,7 @@ export default function RegisterForm() {
                         onChange={handlePhoneChange}
                         className="phone-input-container"
                         placeholder="+1 234 567 8900"
+                        countryCallingCodeEditable={false}
                     />
                 </div>
 

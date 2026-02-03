@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
         const uuid = uuidv4();
         const dbName = `IM_${gymName.replace(/\s+/g, '_')}`;
-        const domain = `${gymName.replace(/\s+/g, '_')}`;
+        const domain = `${gymName.replace(/\s+/g, '')}`;
         const now = new Date();
 
         const connection = await getConnection();
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
             const [projectResult]: any = await connection.execute(
                 `INSERT INTO tblProyectos (Proyecto, BaseDatos, Servidor, UsuarioBD, PasswordBD, Status, FechaAct, Idioma, Pais, DominioIM, UUID) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [gymName, dbName, 'localhost', 'kyk', 'merkurio', 0, now, language, country, domain, uuid]
+                [gymName, dbName, connection.config.host, connection.config.user, connection.config.password, 0, now, language, country, domain, uuid]
             );
             const projectId = projectResult.insertId;
 
@@ -72,9 +72,23 @@ export async function POST(req: NextRequest) {
 
             // 8. Insert initial branch into the new database
             await connection.execute(
-                `INSERT INTO \`${dbName}\`.tblSucursales (Sucursal, Pais, Status, FechaAct) 
+                `INSERT INTO \`${dbName}\`.tblSucursales (Sucursal, Pais, Clave, Status, FechaAct) 
+                 VALUES (?, ?, ?, ?, ?)`,
+                [gymName, country, 'A', 0, now]
+            );
+
+            // 9. Insert initial postion into the new database
+            await connection.execute(
+                `INSERT INTO \`${dbName}\`.tblPuestos (Puesto, EsAdministrador, Status, FechaAct) 
                  VALUES (?, ?, ?, ?)`,
-                [gymName, country, 0, now]
+                ['ADMIN', 1, 0, now]
+            );
+
+            // 10. Insert initial user into the new database
+            await connection.execute(
+                `INSERT INTO \`${dbName}\`.tblUsuarios (Usuario, CorreoElectronico, Telefono, Login, Passwd, Status, FechaAct, IdPuesto, IdSucursal) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [userName, email, phone, 'admin', password, 0, now, 1, 1]
             );
 
             connection.release();

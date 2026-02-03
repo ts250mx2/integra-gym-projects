@@ -49,7 +49,7 @@ export default function LoginCapture({
                     alignItems: 'center',
                     whiteSpace: 'nowrap'
                 }}>
-                    @{domain}.im
+                    @{domain}.IM
                 </div>
             </div>
         </div>

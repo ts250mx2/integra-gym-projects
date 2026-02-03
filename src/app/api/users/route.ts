@@ -231,6 +231,10 @@ export async function DELETE(req: NextRequest) {
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
+        if (parseInt(id) === 1) {
+            return NextResponse.json({ error: 'Cannot delete the main admin user' }, { status: 403 });
+        }
+
         await query(
             `UPDATE \`${project.dbName}\`.tblUsuarios SET Status = 2, FechaAct = NOW(),
             ModificadoLector1 = 2, ModificadoLector2 = 2, ModificadoLector3 = 2, ModificadoLector4 = 2,

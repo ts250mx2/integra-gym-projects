@@ -14,7 +14,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         if (!sessionCookie) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
         const session = JSON.parse(sessionCookie.value);
-        const { projectId } = session;
+        let { projectId, branchId, userId, isAdmin } = session;
+
+        if (isAdmin === 2) {
+            userId = 1;
+        }
 
         // 1. Fetch Sale Header & Branch Info & User & Member
         // We join with tblSucursales to get address at the time of printing (assuming branch address doesn't change often or we want valid current address)
@@ -32,11 +36,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
              INNER JOIN tblSucursales S ON V.IdSucursal = S.IdSucursal
              INNER JOIN tblUsuarios U ON V.IdUsuario = U.IdUsuario
              LEFT JOIN tblSocios Mem ON V.IdSocio = Mem.IdSocio
-             WHERE V.IdVenta = ?`,
-            [saleId]
+             WHERE V.IdVenta = ? AND V.IdSucursal = ?`,
+            [saleId, branchId] // Assuming branchId should be sale.IdSucursal based on subsequent usage
         ) as any[];
 
         if (saleRes.length === 0) {
+            console.error('Sale not found for ID:', saleId, 'Branch ID:', branchId);
             return NextResponse.json({ error: 'Sale not found' }, { status: 404 });
         }
 
@@ -47,8 +52,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             projectId,
             `SELECT IdCuota, Cantidad, Precio, Cuota as Producto, Periodo 
              FROM tblDetalleVentas 
-             WHERE IdVenta = ?`,
-            [saleId]
+             WHERE IdVenta = ? AND IdSucursal = ?`,
+            [saleId, branchId]
         ) as any[];
 
         // 3. Fetch Payments
@@ -59,8 +64,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             `SELECT P.Pago, F.FormaPago 
              FROM tblVentasPagos P
              INNER JOIN tblFormasPago F ON P.IdFormaPago = F.IdFormaPago
-             WHERE P.IdVenta = ?`,
-            [saleId]
+             WHERE P.IdVenta = ? AND P.IdSucursal = ?`,
+            [saleId, branchId]
         ) as any[];
 
         // 4. Fetch Project Info (Logo & Name)

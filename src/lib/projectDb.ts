@@ -8,7 +8,10 @@ const pools = globalForProjectDb.projectPools || new Map<number, mysql.Pool>();
 if (process.env.NODE_ENV !== 'production') globalForProjectDb.projectPools = pools;
 
 export async function getProjectConnectionPool(projectId: number) {
+
+    console.log("Pool created for project ID: ", projectId);
     if (pools.has(projectId)) {
+        console.log("Pool already exists for project ID: ", projectId);
         return pools.get(projectId)!;
     }
 
@@ -20,6 +23,10 @@ export async function getProjectConnectionPool(projectId: number) {
     if (projectData.length === 0) {
         throw new Error(`Project with ID ${projectId} not found`);
     }
+
+    console.log("projectData: ", projectData[0]);
+
+
 
     const { BaseDatos, Servidor, UsuarioBD, PasswordBD } = projectData[0];
 
@@ -33,6 +40,8 @@ export async function getProjectConnectionPool(projectId: number) {
         queueLimit: 0,
     });
 
+    console.log("Pool created for project ID: ", projectId);
+    console.log("Pool: ", pool);
     pools.set(projectId, pool);
     return pool;
 }

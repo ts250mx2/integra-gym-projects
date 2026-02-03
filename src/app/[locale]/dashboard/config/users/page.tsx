@@ -353,9 +353,11 @@ export default function UsersPage() {
                                                 <button onClick={() => handleEdit(user)} className="btn-icon" title={t('edit')}>
                                                     <Edit2 size={16} />
                                                 </button>
-                                                <button onClick={() => handleDelete(user.IdUsuario)} className="btn-icon" style={{ color: '#ff4444' }} title={ct('error')}>
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                {user.IdUsuario !== 1 && (
+                                                    <button onClick={() => handleDelete(user.IdUsuario)} className="btn-icon" style={{ color: '#ff4444' }} title={ct('delete')}>
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -551,14 +553,14 @@ export default function UsersPage() {
                                         initialData={{
                                             address1: currentUser.Direccion1,
                                             address2: currentUser.Direccion2,
-                                            country: projectInfo?.country || currentUser.Pais,
+                                            country: currentUser.Pais || projectInfo?.country,
                                             state: currentUser.Estado,
                                             city: currentUser.Municipio,
                                             zipCode: currentUser.CodigoPostal,
                                             phone: currentUser.Telefono,
                                             email: currentUser.CorreoElectronico
                                         }}
-                                        disabledFields={['country']}
+                                        disabledFields={[]}
                                         onChange={(data) => setCurrentUser({
                                             ...currentUser,
                                             Direccion1: data.address1,
