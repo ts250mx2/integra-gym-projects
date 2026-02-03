@@ -20,6 +20,7 @@ import {
     Dumbbell,
     CalendarClock
 } from 'lucide-react';
+import packageJson from '../../package.json';
 
 interface SidebarSectionProps {
     title: string;
@@ -184,6 +185,18 @@ export default function DashboardSidebar({ isCollapsed }: Props) {
                     ))}
                 </SidebarSection>
             ))}
+
+            <div style={{
+                marginTop: 'auto',
+                paddingTop: '1rem',
+                textAlign: 'center',
+                fontSize: '0.7rem',
+                opacity: 0.3,
+                color: 'var(--text-secondary)',
+                fontFamily: 'monospace'
+            }}>
+                {!isCollapsed && <span>IntegraMembers v.{packageJson.version}</span>}
+            </div>
         </aside>
     );
 }

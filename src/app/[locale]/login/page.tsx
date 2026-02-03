@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/navigation';
 import { useSearchParams } from 'next/navigation';
+import packageJson from '../../../../package.json';
 
 function LoginForm() {
     const t = useTranslations('Auth');
@@ -117,10 +118,21 @@ function LoginForm() {
 
 export default function LoginPage() {
     return (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', position: 'relative' }}>
             <Suspense fallback={<div>Loading...</div>}>
                 <LoginForm />
             </Suspense>
+            <div style={{
+                position: 'absolute',
+                bottom: '1rem',
+                left: '1rem',
+                fontSize: '0.8rem',
+                opacity: 0.4,
+                color: '#fff',
+                fontFamily: 'monospace'
+            }}>
+                IntegraMembers v.{packageJson.version}
+            </div>
         </div>
     );
 }
