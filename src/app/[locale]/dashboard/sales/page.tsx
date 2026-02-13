@@ -1204,8 +1204,7 @@ export default function SalesPage() {
                             disabled={cart.length === 0}
                             onClick={() => {
                                 if (!registerStatus?.isOpen) {
-                                    alert("No hay una apertura de caja activa. La página se actualizará.");
-                                    window.location.reload();
+                                    setIsModalOpen(true);
                                     return;
                                 }
 

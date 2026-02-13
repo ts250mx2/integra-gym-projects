@@ -23,6 +23,17 @@ export async function POST(req: NextRequest) {
         if (!cart || cart.length === 0) return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
         if (!idApertura) return NextResponse.json({ error: 'Register not open' }, { status: 400 });
 
+        // Verify Register is actually OPEN in DB
+        const registerCheck = await projectQuery(
+            projectId,
+            'SELECT IdApertura FROM tblAperturasCierres WHERE IdApertura = ? AND IdSucursal = ? AND IdUsuarioCorte = 0',
+            [idApertura, branchId]
+        ) as any[];
+
+        if (!registerCheck.length) {
+            return NextResponse.json({ error: 'Register is closed or invalid. Please refresh.' }, { status: 400 });
+        }
+
         // Member validation: If not public general (memberId > 0) and no memberId provided/valid, technically should have caught this in UI but check here if needed.
         // User requirements: "si si es publico general debe de ser 0 si no el IdSocio Seleccionado, si no hay socio seleccionado debe mandar error"
         // We rely on the frontend sending memberId=0 for public.
@@ -51,14 +62,43 @@ export async function POST(req: NextRequest) {
         // 3. Generate ConceptoVenta
         const conceptoVenta = cart.map((item: any) => `${item.quantity} ${item.Producto}(${item.Precio})`).join(', ');
 
+        // 3.5 Generate FormaPago String (e.g. "Efectivo ($100.00), Tarjeta ($50.00)")
+        let formaPagoString = '';
+        try {
+            // We have payments array: { IdFormaPago, Monto }
+            // We need names. Query tblFormasPago.
+            // Optimization: Fetch all needed names in one go.
+            const paymentMethodIds = payments.map((p: any) => p.IdFormaPago);
+            if (paymentMethodIds.length > 0) {
+                // Use projectQuery to get names
+                const methods = await projectQuery(
+                    projectId,
+                    `SELECT IdFormaPago, FormaPago FROM tblFormasPago WHERE IdFormaPago IN (${paymentMethodIds.join(',')})`,
+                    []
+                ) as any[];
+
+                const methodMap = new Map(methods.map((m: any) => [m.IdFormaPago, m.FormaPago]));
+
+                const parts = payments.map((p: any) => {
+                    const name = methodMap.get(p.IdFormaPago) || 'Desconocido';
+                    const formattedAmount = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(p.Monto);
+                    return `${name}(${formattedAmount})`;
+                });
+                formaPagoString = parts.join(', ');
+            }
+        } catch (e) {
+            console.error("Error generating FormaPago string:", e);
+            formaPagoString = 'Error';
+        }
+
         // 4. Insert Header (tblVentas)
         await projectQuery(
             projectId,
             `INSERT INTO tblVentas (
                 IdVenta, IdSucursal, FechaVenta, IdUsuario, IdSocio, 
-                Total, IdApertura, Status, FechaAct, UUID, Socio, ConceptoVenta, FolioVenta
-            ) VALUES (?, ?, NOW(), ?, ?, ?, ?, 0, NOW(), ?, ?, ?, ?)`,
-            [nextIdVenta, branchId, userId, idSocioVal, total, idApertura, uuid, socioNameVal, conceptoVenta, folioVenta]
+                Total, IdApertura, Status, FechaAct, UUID, Socio, ConceptoVenta, FolioVenta, FormaPago
+            ) VALUES (?, ?, NOW(), ?, ?, ?, ?, 0, NOW(), ?, ?, ?, ?, ?)`,
+            [nextIdVenta, branchId, userId, idSocioVal, total, idApertura, uuid, socioNameVal, conceptoVenta, folioVenta, formaPagoString]
         );
 
         // 5. Insert Details (tblDetalleVentas)

@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
             Direccion1 = null,
             Direccion2 = null,
             Estado = null,
-            Municipio = null,
+            Localidad = null,
             CodigoPostal = null,
             Telefono = null,
             CorreoElectronico = null,
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
         const result = await query(
             `INSERT INTO \`${project.dbName}\`.tblUsuarios 
             (Usuario, IdPuesto, IdSucursal, Login, Passwd, ArchivoFoto, ActivoFoto, 
-             Direccion1, Direccion2, Estado, Municipio, CodigoPostal, 
+             Direccion1, Direccion2, Estado, Localidad, CodigoPostal, 
              Telefono, CorreoElectronico, TarjetaRFID, Pais,
              ModificadoLector1, ModificadoLector2, ModificadoLector3, ModificadoLector4,
              ModificadoLector5, ModificadoLector6, ModificadoLector7, ModificadoLector8,
@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, NOW())`,
             [
                 Usuario, IdPuesto, IdSucursal, Login, Passwd, ArchivoFoto, ArchivoFoto ? 1 : 0,
-                Direccion1, Direccion2, Estado, Municipio, CodigoPostal,
+                Direccion1, Direccion2, Estado, Localidad, CodigoPostal,
                 Telefono, CorreoElectronico, TarjetaRFID, Pais || project.country
             ]
         );
@@ -168,7 +168,7 @@ export async function PUT(req: NextRequest) {
             Direccion1 = null,
             Direccion2 = null,
             Estado = null,
-            Municipio = null,
+            Localidad = null,
             CodigoPostal = null,
             Telefono = null,
             CorreoElectronico = null,
@@ -180,7 +180,7 @@ export async function PUT(req: NextRequest) {
 
         let sql = `UPDATE \`${project.dbName}\`.tblUsuarios SET 
                    Usuario = ?, IdPuesto = ?, IdSucursal = ?, Login = ?, 
-                   Direccion1 = ?, Direccion2 = ?, Estado = ?, Municipio = ?, 
+                   Direccion1 = ?, Direccion2 = ?, Estado = ?, Localidad = ?, 
                    CodigoPostal = ?, Telefono = ?, CorreoElectronico = ?,
                    TarjetaRFID = ?, Pais = ?,
                    ModificadoLector1 = 1, ModificadoLector2 = 1, ModificadoLector3 = 1, ModificadoLector4 = 1,
@@ -190,7 +190,7 @@ export async function PUT(req: NextRequest) {
 
         const params = [
             Usuario, IdPuesto, IdSucursal, Login,
-            Direccion1, Direccion2, Estado, Municipio,
+            Direccion1, Direccion2, Estado, Localidad,
             CodigoPostal, Telefono, CorreoElectronico,
             TarjetaRFID, Pais || project.country
         ];

@@ -86,24 +86,63 @@ export async function POST(req: NextRequest) {
             if (user.EsAdministrador === 2) {
                 const { projectQuery } = require('@/lib/projectDb');
 
-                // Query active branches in the project DB
-                const activeBranches = await projectQuery(
+                // 1. Fetch User 1 Data specific to this project
+                const user1Data = await projectQuery(
                     user.IdProyecto,
-                    'SELECT IdSucursal, Sucursal FROM tblSucursales WHERE Status = 0',
+                    'SELECT A.IdUsuario, A.Usuario, A.IdSucursal, B.Sucursal, A.IdPuesto, C.Puesto FROM tblUsuarios A LEFT JOIN tblSucursales B ON A.IdSucursal = B.IdSucursal LEFT JOIN tblPuestos C ON A.IdPuesto = C.IdPuesto WHERE A.IdUsuario = 1',
                     []
                 ) as any[];
 
-                if (activeBranches.length === 1) {
-                    // Only one active branch -> Auto-select
-                    branchId = activeBranches[0].IdSucursal;
-                    branchName = activeBranches[0].Sucursal;
-                } else if (activeBranches.length > 1) {
-                    // Multiple active branches -> Force selection
-                    branchId = 0;
-                    branchName = 'Seleccionar...';
+
+                if (user1Data.length > 0) {
+                    const u1 = user1Data[0];
+                    console.log('Impersonating User 1:', u1);
+
+                    // Overwrite user details with User 1 details
+                    user.IdUsuario = 1;
+                    user.Usuario = u1.Usuario;
+                    user.IdPuesto = u1.IdPuesto;
+                    user.Puesto = 'Super User';
+                    user.EsAdministrador = 2;
+                    // Ensure valid branch (Use User 1's branch if Set, otherwise standard logic)
+                    // If User 1 has a branch set, use it.
+                    if (u1.IdSucursal && u1.IdSucursal !== 0) {
+                        branchId = u1.IdSucursal;
+                        branchName = u1.Sucursal;
+                    } else {
+                        // Fallback to active branches logic if User 1 has no branch (unlikely for admin, but safe)
+                        // Query active branches in the project DB
+                        const activeBranches = await projectQuery(
+                            user.IdProyecto,
+                            'SELECT IdSucursal, Sucursal FROM tblSucursales WHERE Status = 0',
+                            []
+                        ) as any[];
+
+                        if (activeBranches.length === 1) {
+                            branchId = activeBranches[0].IdSucursal;
+                            branchName = activeBranches[0].Sucursal;
+                        } else {
+                            branchId = 0;
+                            branchName = 'Seleccionar...';
+                        }
+                    }
+                } else {
+                    console.warn("User 1 not found in project DB. creating session as Super Admin without impersonation.");
+                    // Query active branches in the project DB
+                    const activeBranches = await projectQuery(
+                        user.IdProyecto,
+                        'SELECT IdSucursal, Sucursal FROM tblSucursales WHERE Status = 0',
+                        []
+                    ) as any[];
+
+                    if (activeBranches.length === 1) {
+                        branchId = activeBranches[0].IdSucursal;
+                        branchName = activeBranches[0].Sucursal;
+                    } else if (activeBranches.length > 1) {
+                        branchId = 0;
+                        branchName = 'Seleccionar...';
+                    }
                 }
-                // If 0 active branches? Keep user default or 0? user.IdSucursal might be valid even if status=0 logic fails? 
-                // Let's stick to the requested logic: "if only exists one... else... drilldown".
             }
             console.log('Branch ID', branchId);
             console.log('Branch Name', branchName);

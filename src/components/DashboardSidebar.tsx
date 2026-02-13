@@ -18,7 +18,18 @@ import {
     Building2,
     Tag,
     Dumbbell,
-    CalendarClock
+    CalendarClock,
+    ReceiptText,
+    Activity,
+    Calendar,
+    Wallet,
+    Truck,
+    ShoppingBag,
+    BarChart,
+    PieChart,
+    LineChart,
+    Brain,
+    ClipboardList
 } from 'lucide-react';
 import packageJson from '../../package.json';
 
@@ -68,8 +79,11 @@ interface Props {
 
 export default function DashboardSidebar({ isCollapsed }: Props) {
     const t = useTranslations('Sidebar');
-    const [configOpen, setConfigOpen] = useState(true);
-    const [salesOpen, setSalesOpen] = useState(true);
+    const [configOpen, setConfigOpen] = useState(false);
+    const [salesOpen, setSalesOpen] = useState(false);
+    const [activitiesOpen, setActivitiesOpen] = useState(false);
+    const [expensesOpen, setExpensesOpen] = useState(false);
+    const [analyticsOpen, setAnalyticsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
     const menuItems = [
@@ -81,6 +95,7 @@ export default function DashboardSidebar({ isCollapsed }: Props) {
             items: [
                 { href: '/dashboard/config/gym', icon: <Dumbbell size={18} />, label: t('gym') },
                 { href: '/dashboard/config/branches', icon: <Building2 size={18} />, label: t('branches') },
+                { href: '/dashboard/config/providers', icon: <Truck size={18} />, label: t('providers') },
                 { href: '/dashboard/config/users', icon: <Users size={18} />, label: t('users') },
                 { href: '/dashboard/config/positions', icon: <UserCheck size={18} />, label: t('positions') },
                 { href: '/dashboard/config/schedule-groups', icon: <CalendarClock size={18} />, label: t('scheduleGroups') },
@@ -98,7 +113,39 @@ export default function DashboardSidebar({ isCollapsed }: Props) {
             items: [
                 { href: '/dashboard/sales/members', icon: <UserCheck size={18} />, label: t('members') },
                 { href: '/dashboard/sales', icon: <CreditCard size={18} />, label: t('pos') },
-                { href: '/dashboard/sales/visits', icon: <Clock size={18} />, label: t('visits') },
+                { href: '/dashboard/sales/visits', icon: <ReceiptText size={18} />, label: t('visits') },
+            ]
+        },
+        {
+            section: 'activities',
+            icon: <Activity size={20} />,
+            isOpen: activitiesOpen,
+            setIsOpen: setActivitiesOpen,
+            items: [
+                { href: '/dashboard/activities/classes', icon: <Dumbbell size={18} />, label: t('classes') },
+                { href: '/dashboard/activities/events', icon: <Calendar size={18} />, label: t('events') },
+            ]
+        },
+        {
+            section: 'expenses',
+            icon: <Wallet size={20} />,
+            isOpen: expensesOpen,
+            setIsOpen: setExpensesOpen,
+            items: [
+                { href: '/dashboard/expenses/inventory', icon: <ClipboardList size={18} />, label: t('inventory') },
+                { href: '/dashboard/expenses/purchases', icon: <ShoppingBag size={18} />, label: t('purchases') },
+            ]
+        },
+        {
+            section: 'analytics',
+            icon: <BarChart size={20} />,
+            isOpen: analyticsOpen,
+            setIsOpen: setAnalyticsOpen,
+            items: [
+                { href: '/dashboard/analytics/sales', icon: <LineChart size={18} />, label: t('salesAnalytics') },
+                { href: '/dashboard/analytics/members', icon: <Users size={18} />, label: t('membersAnalytics') },
+                { href: '/dashboard/analytics/purchases', icon: <PieChart size={18} />, label: t('purchasesAnalytics') },
+                { href: '/dashboard/analytics/ai-agent', icon: <Brain size={18} />, label: t('aiAgent') },
             ]
         }
     ];

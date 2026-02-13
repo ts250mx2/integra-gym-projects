@@ -39,3 +39,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# build artifacts
+/dist/
+/electron/dist/
+/electron/out/
+
+# temporary debugging scripts
+inspect_*.ts
+verify_*.ts
+debug_*.ts
+list_*.ts
+src/scripts/inspect_*.ts
+src/scripts/create_*.ts

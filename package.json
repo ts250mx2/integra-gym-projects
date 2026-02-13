@@ -1,12 +1,18 @@
 {
   "name": "integra-gym-projects",
   "version": "1.1.2",
+  "main": "electron/main.js",
+  "author": "Integra Gym",
+  "description": "Integra Gym POS Application",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3010",
     "build": "next build",
     "start": "next start -p 3011",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron-dev": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on http://127.0.0.1:3010 && electron .\"",
+    "electron-build": "npm run build && electron-builder",
+    "dist": "npm run electron-build"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
@@ -32,9 +38,53 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^40.1.0",
+    "electron-builder": "^24.13.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.integramgym.pos",
+    "productName": "Integra Gym POS",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "dir",
+      "forceCodeSigning": false
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "npmRebuild": false,
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "server",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "public",
+        "to": "server/public",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": ".next/static",
+        "to": "server/.next/static",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   }
 }
