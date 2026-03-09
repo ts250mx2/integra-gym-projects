@@ -85,6 +85,23 @@ h4 {
   box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);
 }
 
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--light-gray);
+  border: 1px solid var(--glass-border);
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--foreground);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
 .glass-card {
   background: var(--glass-bg);
   backdrop-filter: blur(10px);

@@ -84,7 +84,9 @@
         "membersAnalytics": "Members Analytics",
         "purchasesAnalytics": "Purchases Analytics",
         "aiAgent": "AI Agent",
-        "inventory": "Inventory"
+        "inventory": "Inventory",
+        "purchases": "Purchases",
+        "projects": "Projects"
     },
     "Providers": {
         "title": "Providers",

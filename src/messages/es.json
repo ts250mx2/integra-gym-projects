@@ -121,7 +121,8 @@
     "salesAnalytics": "Analíticas de Ventas",
     "membersAnalytics": "Analíticas de Socios",
     "purchasesAnalytics": "Analíticas de Compras",
-    "aiAgent": "Agente IA"
+    "aiAgent": "Agente IA",
+    "projects": "Proyectos"
   },
   "Providers": {
     "title": "Proveedores",

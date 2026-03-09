@@ -1,3 +1,4 @@
+
 const mysql = require('mysql2/promise');
 
 async function main() {
@@ -10,7 +11,8 @@ async function main() {
 
     try {
         const [rows] = await connection.execute('DESCRIBE tblSocios');
-        console.log(JSON.stringify(rows, null, 2));
+        console.log("COLUMNS FOR tblSocios:");
+        rows.forEach(r => console.log(`- ${r.Field} (${r.Type})`));
     } catch (err) {
         console.error(err);
     } finally {

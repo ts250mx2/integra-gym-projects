@@ -35,7 +35,13 @@ function LoginForm() {
             setDebugResult(data);
 
             if (data.success) {
-                router.push('/dashboard');
+                if (data.isAdmin === 1) {
+                    router.push('/admin/dashboard');
+                } else if (data.version === '1.0') {
+                    router.push('/dashboard-v1');
+                } else {
+                    router.push('/dashboard');
+                }
                 router.refresh();
             } else {
                 setError(t(data.error || 'serverError'));
