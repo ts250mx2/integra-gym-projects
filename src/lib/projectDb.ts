@@ -7,28 +7,49 @@ const pools = globalForProjectDb.projectPools || new Map<number, mysql.Pool>();
 
 if (process.env.NODE_ENV !== 'production') globalForProjectDb.projectPools = pools;
 
-export async function getProjectConnectionPool(projectId: number) {
+export interface ProjectMetadata {
+    IdProyecto: number;
+    BaseDatos: string;
+    Servidor: string;
+    UsuarioBD: string;
+    PasswordBD: string;
+    Titulo?: string;
+    Proyecto: string;
+    ArchivoLogo?: string;
+}
 
-    console.log("Pool created for project ID: ", projectId);
-    if (pools.has(projectId)) {
-        console.log("Pool already exists for project ID: ", projectId);
-        return pools.get(projectId)!;
-    }
-
+export async function getProjectByUUID(uuid: string): Promise<ProjectMetadata> {
     const projectData = await query(
-        'SELECT BaseDatos, Servidor, UsuarioBD, PasswordBD FROM tblProyectos WHERE IdProyecto = ?',
-        [projectId]
+        'SELECT IdProyecto, BaseDatos, Servidor, UsuarioBD, PasswordBD, Titulo, Proyecto, ArchivoLogo FROM tblProyectos WHERE UUID = ?',
+        [uuid]
     ) as any[];
 
     if (projectData.length === 0) {
-        throw new Error(`Project with ID ${projectId} not found`);
+        throw new Error(`Project with UUID ${uuid} not found`);
     }
 
-    console.log("projectData: ", projectData[0]);
+    return projectData[0];
+}
 
+export async function getProjectConnectionPool(projectId: number, metadata?: ProjectMetadata) {
+    if (pools.has(projectId)) {
+        return pools.get(projectId)!;
+    }
 
+    let projectInfo = metadata;
+    if (!projectInfo) {
+        const projectData = await query(
+            'SELECT BaseDatos, Servidor, UsuarioBD, PasswordBD FROM tblProyectos WHERE IdProyecto = ?',
+            [projectId]
+        ) as any[];
 
-    const { BaseDatos, Servidor, UsuarioBD, PasswordBD } = projectData[0];
+        if (projectData.length === 0) {
+            throw new Error(`Project with ID ${projectId} not found`);
+        }
+        projectInfo = projectData[0] as ProjectMetadata;
+    }
+
+    const { BaseDatos, Servidor, UsuarioBD, PasswordBD } = projectInfo;
 
     const pool = mysql.createPool({
         host: Servidor,
@@ -36,19 +57,16 @@ export async function getProjectConnectionPool(projectId: number) {
         password: PasswordBD,
         database: BaseDatos,
         waitForConnections: true,
-        connectionLimit: 5, // Reduced from 10 to 5
+        connectionLimit: 5,
         queueLimit: 0,
     });
 
-    console.log("Pool created for project ID: ", projectId);
-    console.log("Pool: ", pool);
     pools.set(projectId, pool);
     return pool;
 }
 
-export async function projectQuery(projectId: number, sql: string, params?: any[]) {
-    const pool = await getProjectConnectionPool(projectId);
+export async function projectQuery(projectId: number, sql: string, params?: any[], metadata?: ProjectMetadata) {
+    const pool = await getProjectConnectionPool(projectId, metadata);
     const [results] = await pool.execute(sql, params);
-    console.log("sql: ", sql);
     return results;
 }

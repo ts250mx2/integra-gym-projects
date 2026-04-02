@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Building2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, Building2, Settings2, Search } from 'lucide-react';
 import { getCountries } from 'react-phone-number-input';
 import { languages } from '@/i18n/locales';
 import Select, { components, SingleValueProps, OptionProps } from 'react-select';
+import CreatableSelect from 'react-select/creatable';
 
 const getFlagUrl = (countryCode: string) => `https://purecatamphetamine.github.io/country-flag-icons/3x2/${countryCode.toUpperCase()}.svg`;
 const countryCodes = getCountries();
@@ -57,6 +58,18 @@ export default function AdminProjectsPage() {
         Version: '',
         Idioma: 'es',
         Pais: 'MX'
+    });
+
+    // Parameters Modal State
+    const [isParamsModalOpen, setIsParamsModalOpen] = useState(false);
+    const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+    const [projectParams, setProjectParams] = useState<any[]>([]);
+    const [paramsLoading, setParamsLoading] = useState(false);
+    const [paramFormData, setParamFormData] = useState({
+        Grupo: '',
+        Campo: '',
+        Valor: '',
+        IdParametro: null as number | null
     });
 
     const languageOptions = languages.map(l => ({ value: l.code, label: l.name }));
@@ -190,6 +203,77 @@ export default function AdminProjectsPage() {
         }
     };
 
+    // Parameters Logic
+    const fetchParams = async (idProyecto: number) => {
+        setParamsLoading(true);
+        try {
+            const res = await fetch(`/api/admin/projects/parameters?idProyecto=${idProyecto}`);
+            if (res.ok) {
+                const data = await res.json();
+                setProjectParams(data);
+            }
+        } catch (error) {
+            console.error('Error fetching params:', error);
+        } finally {
+            setParamsLoading(false);
+        }
+    };
+
+    const handleOpenParams = (project: Project) => {
+        setSelectedProject(project);
+        setProjectParams([]);
+        setParamFormData({ Grupo: '', Campo: '', Valor: '', IdParametro: null });
+        setIsParamsModalOpen(true);
+        fetchParams(project.IdProyecto);
+    };
+
+    const handleSaveParam = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedProject) return;
+
+        try {
+            const res = await fetch('/api/admin/projects/parameters', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    IdProyecto: selectedProject.IdProyecto,
+                    ...paramFormData
+                })
+            });
+
+            if (res.ok) {
+                fetchParams(selectedProject.IdProyecto);
+                setParamFormData({ Grupo: paramFormData.Grupo, Campo: '', Valor: '', IdParametro: null });
+            } else {
+                const errorData = await res.json();
+                alert(errorData.message || 'Error al guardar el parámetro');
+            }
+        } catch (error) {
+            console.error('Error saving param:', error);
+        }
+    };
+
+    const handleDeleteParam = async (id: number) => {
+        if (!confirm('¿Estás seguro de que deseas eliminar este parámetro?')) return;
+        try {
+            const res = await fetch(`/api/admin/projects/parameters?id=${id}`, { method: 'DELETE' });
+            if (res.ok && selectedProject) {
+                fetchParams(selectedProject.IdProyecto);
+            }
+        } catch (error) {
+            console.error('Error deleting param:', error);
+        }
+    };
+
+    const handleEditParam = (param: any) => {
+        setParamFormData({
+            Grupo: param.Grupo,
+            Campo: param.Campo,
+            Valor: param.Valor,
+            IdParametro: param.IdParametro
+        });
+    };
+
     return (
         <div style={{ padding: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
@@ -253,6 +337,14 @@ export default function AdminProjectsPage() {
                                         <td style={{ padding: '1rem' }}>{project.DominioIM || '-'}</td>
                                         <td style={{ padding: '1rem', textAlign: 'right' }}>
                                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                                                <button
+                                                    onClick={() => handleOpenParams(project)}
+                                                    className="btn-secondary"
+                                                    style={{ padding: '0.5rem', color: 'var(--neon-green)' }}
+                                                    title="Parámetros"
+                                                >
+                                                    <Settings2 size={16} />
+                                                </button>
                                                 <button
                                                     onClick={() => handleOpenModal(project)}
                                                     className="btn-secondary"
@@ -433,6 +525,125 @@ export default function AdminProjectsPage() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Parameters Modal */}
+            {isParamsModalOpen && selectedProject && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    backdropFilter: 'blur(5px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1001
+                }}>
+                    <div className="glass-card" style={{ width: '100%', maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                            <div>
+                                <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Parámetros: {selectedProject.Proyecto}</h2>
+                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Configuración personalizada del proyecto</p>
+                            </div>
+                            <button onClick={() => setIsParamsModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveParam} className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', background: 'rgba(255,255,255,0.03)' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '1rem', alignItems: 'flex-end' }}>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Grupo *</label>
+                                    <CreatableSelect
+                                        isClearable
+                                        options={Array.from(new Set(projectParams.map(p => p.Grupo))).map(g => ({ value: g, label: g }))}
+                                        styles={selectStyles}
+                                        value={paramFormData.Grupo ? { value: paramFormData.Grupo, label: paramFormData.Grupo } : null}
+                                        onChange={(opt: any) => setParamFormData({ ...paramFormData, Grupo: opt?.value || '' })}
+                                        placeholder="Selecciona o escribe..."
+                                        formatCreateLabel={(inputValue) => `Crear grupo "${inputValue}"`}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Campo *</label>
+                                    <input
+                                        type="text"
+                                        className="input-field"
+                                        value={paramFormData.Campo}
+                                        onChange={(e) => setParamFormData({ ...paramFormData, Campo: e.target.value })}
+                                        required
+                                        placeholder="Ej: MaxUsers"
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Valor</label>
+                                    <input
+                                        type="text"
+                                        className="input-field"
+                                        value={paramFormData.Valor}
+                                        onChange={(e) => setParamFormData({ ...paramFormData, Valor: e.target.value })}
+                                        placeholder="Ej: 100"
+                                    />
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button type="submit" className="btn-primary" style={{ padding: '0.75rem' }}>
+                                        {paramFormData.IdParametro ? <Save size={18} /> : <Plus size={18} />}
+                                    </button>
+                                    {paramFormData.IdParametro && (
+                                        <button
+                                            type="button"
+                                            className="btn-secondary"
+                                            style={{ padding: '0.75rem' }}
+                                            onClick={() => setParamFormData({ Grupo: '', Campo: '', Valor: '', IdParametro: null })}
+                                        >
+                                            <X size={18} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </form>
+
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.02)' }}>
+                                        <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>Grupo</th>
+                                        <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>Campo</th>
+                                        <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>Valor</th>
+                                        <th style={{ padding: '1rem', textAlign: 'right', color: 'var(--text-secondary)', fontWeight: 600 }}>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {paramsLoading ? (
+                                        <tr><td colSpan={4} style={{ padding: '2rem', textAlign: 'center' }}>Cargando parámetros...</td></tr>
+                                    ) : projectParams.length === 0 ? (
+                                        <tr><td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Sin parámetros registrados</td></tr>
+                                    ) : (
+                                        projectParams.map((param) => (
+                                            <tr key={param.IdParametro} style={{ borderBottom: '1px solid var(--glass-border)', background: param.IdParametro === paramFormData.IdParametro ? 'rgba(0, 243, 255, 0.05)' : 'transparent' }}>
+                                                <td style={{ padding: '1rem' }}>
+                                                    <span style={{ background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.875rem' }}>
+                                                        {param.Grupo}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '1rem', fontWeight: 500 }}>{param.Campo}</td>
+                                                <td style={{ padding: '1rem', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {param.Valor || '-'}
+                                                </td>
+                                                <td style={{ padding: '1rem', textAlign: 'right' }}>
+                                                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                                                        <button onClick={() => handleEditParam(param)} className="btn-secondary" style={{ padding: '0.4rem' }}><Edit2 size={14} /></button>
+                                                        <button onClick={() => handleDeleteParam(param.IdParametro)} className="btn-danger" style={{ padding: '0.4rem' }}><Trash2 size={14} /></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             )}
