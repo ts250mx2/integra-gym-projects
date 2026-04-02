@@ -86,7 +86,7 @@ function CheckoutForm({ clientSecret, total, onPaymentSuccess }: { clientSecret:
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    Estoy consciente de que se me generarán cargos automáticos al finalizar el mes, con múltiples intentos hasta que se realice el pago. Si deseo cancelar la recurrencia, deberé avisar por escrito a la recepción 30 días naturales antes.
+                    <strong>Autorizo el cargo recurrente mensual de mi membresía</strong>, aceptando que se realicen reintentos de cobro automáticos en caso de fallo. Comprendo que la cancelación de esta modalidad requiere una notificación escrita en recepción con una antelación mínima de <strong>30 días naturales.</strong>
                 </label>
             </div>
             
