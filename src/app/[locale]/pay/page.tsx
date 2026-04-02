@@ -13,10 +13,11 @@ function CheckoutForm({ clientSecret, total, onPaymentSuccess }: { clientSecret:
     const [message, setMessage] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [elementReady, setElementReady] = useState(false);
+    const [acceptedTerms, setAcceptedTerms] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!stripe || !elements) return;
+        if (!stripe || !elements || !acceptedTerms) return;
 
         setIsProcessing(true);
         const { error, paymentIntent } = await stripe.confirmPayment({
@@ -44,28 +45,70 @@ function CheckoutForm({ clientSecret, total, onPaymentSuccess }: { clientSecret:
                         Cargando componentes de pago de Stripe...
                     </div>
                 )}
-                <PaymentElement onReady={() => setElementReady(true)} />
+                <PaymentElement 
+                    onReady={() => setElementReady(true)} 
+                    options={{ layout: 'tabs' }}
+                />
+            </div>
+
+            {/* Recurring Charges Checkbox */}
+            <div style={{ 
+                display: 'flex', 
+                gap: '0.75rem', 
+                padding: '1rem', 
+                background: 'rgba(255,255,255,0.03)', 
+                borderRadius: '10px',
+                border: '1px solid rgba(255,255,255,0.05)',
+                alignItems: 'flex-start',
+                cursor: 'pointer'
+            }} onClick={() => setAcceptedTerms(!acceptedTerms)}>
+                <input 
+                    type="checkbox" 
+                    id="recurring-terms"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    style={{ 
+                        marginTop: '0.2rem',
+                        width: '18px',
+                        height: '18px',
+                        cursor: 'pointer',
+                        accentColor: 'var(--neon-blue)'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                />
+                <label 
+                    htmlFor="recurring-terms" 
+                    style={{ 
+                        fontSize: '0.8rem', 
+                        lineHeight: '1.4', 
+                        color: acceptedTerms ? 'var(--foreground)' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    Estoy consciente de que se me generarán cargos automáticos al finalizar el mes, con múltiples intentos hasta que se realice el pago. Si deseo cancelar la recurrencia, deberé avisar por escrito a la recepción 30 días naturales antes.
+                </label>
             </div>
             
             <button
-                disabled={isProcessing || !stripe || !elements || !elementReady}
+                disabled={isProcessing || !stripe || !elements || !elementReady || !acceptedTerms}
                 className="btn-primary"
                 style={{
                     width: '100%',
                     padding: '1.25rem',
                     fontSize: '1.125rem',
                     fontWeight: 700,
-                    background: elementReady ? 'var(--neon-blue)' : '#333',
+                    background: (elementReady && acceptedTerms) ? 'var(--neon-blue)' : '#333',
                     color: '#000',
                     border: 'none',
                     borderRadius: '12px',
-                    cursor: elementReady ? 'pointer' : 'not-allowed',
+                    cursor: (elementReady && acceptedTerms) ? 'pointer' : 'not-allowed',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '0.75rem',
                     transition: 'all 0.2s ease',
-                    opacity: (isProcessing || !elementReady) ? 0.7 : 1,
+                    opacity: (isProcessing || !elementReady || !acceptedTerms) ? 0.7 : 1,
                     marginTop: '0.5rem'
                 }}
             >
@@ -108,6 +151,12 @@ function PayContent() {
                 }
                 const detailsData = await detailsRes.json();
                 setData(detailsData);
+
+                if (detailsData.isPaid) {
+                    setPaid(true);
+                    setLoading(false);
+                    return;
+                }
 
                 if (!detailsData.project.publicKey) {
                     throw new Error('Configuración de Stripe incompleta (falta llave pública)');
@@ -178,7 +227,6 @@ function PayContent() {
                 <AlertCircle size={48} color="#ef4444" style={{ marginBottom: '1.5rem' }} />
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>No se pudo procesar</h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.6 }}>{error}</p>
-                {clientSecret && <p style={{ marginTop: '1rem', fontSize: '0.6rem', wordBreak: 'break-all', opacity: 0.5 }}>Debug: {clientSecret}</p>}
             </div>
         </div>
     );
@@ -209,8 +257,23 @@ function PayContent() {
             {/* Member Card */}
             <div style={{ padding: '0 1.5rem' }}>
                 <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(0, 243, 255, 0.03)' }}>
-                    <div style={{ padding: '0.75rem', background: 'rgba(0, 243, 255, 0.1)', borderRadius: '12px', color: 'var(--neon-blue)' }}>
-                        <User size={24} />
+                    <div style={{ 
+                        width: '56px', 
+                        height: '56px', 
+                        background: 'rgba(0, 243, 255, 0.1)', 
+                        borderRadius: '12px', 
+                        color: 'var(--neon-blue)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                        flexShrink: 0
+                    }}>
+                        {data.member.photo ? (
+                            <img src={data.member.photo} alt="Member" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                            <User size={28} />
+                        )}
                     </div>
                     <div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Información del Socio</div>

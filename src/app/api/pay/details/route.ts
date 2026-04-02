@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 
         // Fetch Solicitation main info
         const [solicitationRows]: any = await pool.execute(
-            'SELECT CodigoSocio, Socio FROM tblSolicitudesStripe WHERE UUID = ?',
+            'SELECT CodigoSocio, Socio, Pagado, IdSocio, idSucursalSocio FROM tblSolicitudesStripe WHERE UUID = ?',
             [uuidSolicitud]
         );
 
@@ -41,6 +41,23 @@ export async function GET(req: NextRequest) {
         }
 
         const solicitation = solicitationRows[0];
+
+        // Fetch Member Photo
+        let memberPhoto = null;
+        if (solicitation.IdSocio && solicitation.idSucursalSocio) {
+            const [photoRows]: any = await pool.execute(
+                'SELECT Foto FROM tblSociosFotos WHERE IdSocio = ? AND IdSucursal = ? AND EsUltimaFoto = 1',
+                [solicitation.IdSocio, solicitation.idSucursalSocio]
+            );
+            if (photoRows.length > 0 && photoRows[0].Foto) {
+                const fotoBuffer = photoRows[0].Foto;
+                if (Buffer.isBuffer(fotoBuffer)) {
+                    memberPhoto = `data:image/jpeg;base64,${fotoBuffer.toString('base64')}`;
+                } else {
+                    memberPhoto = `data:image/jpeg;base64,${Buffer.from(fotoBuffer).toString('base64')}`;
+                }
+            }
+        }
 
         // Fetch Solicitation details
         // Note: Assuming detail mapping is done via a foreign key or lookup from solicitation
@@ -66,8 +83,10 @@ export async function GET(req: NextRequest) {
             },
             member: {
                 code: solicitation.CodigoSocio,
-                name: solicitation.Socio
+                name: solicitation.Socio,
+                photo: memberPhoto
             },
+            isPaid: solicitation.Pagado === 1,
             items: details,
             total: totalAmount
         });

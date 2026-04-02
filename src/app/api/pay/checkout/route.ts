@@ -30,9 +30,9 @@ export async function POST(req: NextRequest) {
         // Establish connection to project-specific database
         const pool = await getProjectConnectionPool(IdProyecto, project);
 
-        // Fetch Solicitation Info (to get Socio name)
+        // Fetch Solicitation Info (to get Socio name and Payment status)
         const [solicitationRows]: any = await pool.execute(
-            'SELECT Socio FROM tblSolicitudesStripe WHERE UUID = ?',
+            'SELECT Socio, Pagado FROM tblSolicitudesStripe WHERE UUID = ?',
             [uuidSolicitud]
         );
 
@@ -40,7 +40,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Solicitation not found' }, { status: 404 });
         }
 
-        const socioName = solicitationRows[0].Socio;
+        const solicitation = solicitationRows[0];
+        if (solicitation.Pagado === 1) {
+            return NextResponse.json({ error: 'orderAlreadyPaid' }, { status: 400 });
+        }
+
+        const socioName = solicitation.Socio;
 
         // Fetch Solicitation Details to calculate total
         const [detailsRows]: any = await pool.execute(
@@ -97,9 +102,7 @@ export async function POST(req: NextRequest) {
                 uuidProject,
                 uuidSolicitud
             },
-            automatic_payment_methods: {
-                enabled: true,
-            },
+            payment_method_types: ['card'],
         });
 
         return NextResponse.json({
