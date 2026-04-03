@@ -10,17 +10,23 @@ const pool = globalForDb.mysqlPool || mysql.createPool({
     waitForConnections: true,
     connectionLimit: 5, // Reduced from 10 to 5
     queueLimit: 0,
+    charset: 'latin1'
+});
+
+pool.on('connection', (connection) => {
+    connection.query('SET NAMES latin1');
+    connection.query("SET collation_connection = 'latin1_swedish_ci'");
 });
 
 if (process.env.NODE_ENV !== 'production') globalForDb.mysqlPool = pool;
 
 export async function query(sql: string, params?: any[]) {
-    const [results] = await pool.execute(sql, params);
+    const [results] = await pool.query(sql, params);
     return results;
 }
 
 export async function execute(sql: string, params?: any[]) {
-    const [results] = await pool.execute(sql, params);
+    const [results] = await pool.query(sql, params);
     return results;
 }
 

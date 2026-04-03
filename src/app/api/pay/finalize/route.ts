@@ -51,12 +51,13 @@ export async function POST(req: NextRequest) {
         const pool = await getProjectConnectionPool(IdProyecto, project);
 
         // Update solicitation record
-        await pool.execute(
+        await pool.query(
             `UPDATE tblSolicitudesStripe 
              SET Pagado = 1, 
                  PaymentMethod = ?, 
                  CustomerId = ?, 
-                 PaymentIntent = ?
+                 PaymentIntent = ?,
+                 FechaPago = NOW()
              WHERE UUID = ?`,
             [
                 paymentMethodId,

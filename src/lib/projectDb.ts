@@ -59,6 +59,12 @@ export async function getProjectConnectionPool(projectId: number, metadata?: Pro
         waitForConnections: true,
         connectionLimit: 5,
         queueLimit: 0,
+        charset: 'latin1'
+    });
+
+    pool.on('connection', (connection) => {
+        connection.query('SET NAMES latin1');
+        connection.query("SET collation_connection = 'latin1_swedish_ci'");
     });
 
     pools.set(projectId, pool);

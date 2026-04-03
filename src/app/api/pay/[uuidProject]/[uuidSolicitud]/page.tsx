@@ -7,18 +7,26 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 import { ShoppingBag, User, CreditCard, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 
 // CheckoutForm handles the actual payment submission
-function CheckoutForm({ clientSecret, total, onPaymentSuccess }: { clientSecret: string; total: number; onPaymentSuccess: () => void }) {
+function CheckoutForm({ clientSecret, total, isRecurring, onPaymentSuccess }: { clientSecret: string; total: number; isRecurring: boolean; onPaymentSuccess: () => void }) {
     const stripe = useStripe();
     const elements = useElements();
     const [message, setMessage] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [acceptedRecurring, setAcceptedRecurring] = useState(false);
+    const [showRecurringError, setShowRecurringError] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        if (isRecurring && !acceptedRecurring) {
+            setShowRecurringError(true);
+            return;
+        }
+
         if (!stripe || !elements) return;
 
         setIsProcessing(true);
+        setShowRecurringError(false);
 
         const { error, paymentIntent } = await stripe.confirmPayment({
             elements,
@@ -43,6 +51,41 @@ function CheckoutForm({ clientSecret, total, onPaymentSuccess }: { clientSecret:
     return (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <PaymentElement />
+
+            {/* Recurring charges checkbox */}
+            {isRecurring && (
+                <div style={{
+                    padding: '1rem',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: showRecurringError ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.05)',
+                    borderRadius: '12px',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    transition: 'all 0.2s ease'
+                }}>
+                    <input
+                        type="checkbox"
+                        id="recurring-check"
+                        checked={acceptedRecurring}
+                        onChange={(e) => {
+                            setAcceptedRecurring(e.target.checked);
+                            if (e.target.checked) setShowRecurringError(false);
+                        }}
+                        style={{
+                            marginTop: '0.25rem',
+                            accentColor: 'var(--neon-blue)',
+                            width: '1.125rem',
+                            height: '1.125rem',
+                            cursor: 'pointer'
+                        }}
+                    />
+                    <label htmlFor="recurring-check" style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.8)', cursor: 'pointer', lineHeight: 1.4 }}>
+                        Acepto los <span style={{ color: 'var(--neon-blue)', fontWeight: 600 }}>cargos recurrentes</span> automáticos para la renovación de mi servicio.
+                    </label>
+                </div>
+            )}
+
             <button
                 disabled={isProcessing || !stripe || !elements}
                 className="btn-primary"
@@ -57,7 +100,9 @@ function CheckoutForm({ clientSecret, total, onPaymentSuccess }: { clientSecret:
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '0.5rem'
+                    gap: '0.5rem',
+                    opacity: (isRecurring && !acceptedRecurring && !isProcessing) ? 0.7 : 1,
+                    cursor: (isRecurring && !acceptedRecurring && !isProcessing) ? 'not-allowed' : 'pointer'
                 }}
             >
                 {isProcessing ? <Loader2 className="animate-spin" /> : <CreditCard size={20} />}
@@ -228,7 +273,7 @@ export default function PayPage() {
                 <div className="glass-card" style={{ padding: '1.5rem' }}>
                     {clientSecret && stripePromise ? (
                         <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'night', variables: { colorPrimary: '#00f3ff' } } }}>
-                            <CheckoutForm clientSecret={clientSecret} total={data.total} onPaymentSuccess={() => setPaid(true)} />
+                            <CheckoutForm clientSecret={clientSecret} total={data.total} isRecurring={data.isRecurring} onPaymentSuccess={() => setPaid(true)} />
                         </Elements>
                     ) : (
                         <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
