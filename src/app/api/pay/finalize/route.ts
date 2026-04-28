@@ -33,16 +33,16 @@ export async function POST(req: NextRequest) {
         const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
         if (paymentIntent.status !== 'succeeded') {
-            return NextResponse.json({ 
-                error: `Payment status is ${paymentIntent.status}. Expected "succeeded".` 
+            return NextResponse.json({
+                error: `Payment status is ${paymentIntent.status}. Expected "succeeded".`
             }, { status: 400 });
         }
 
         // 2. Extract needed IDs
-        const customerId = (typeof paymentIntent.customer === 'string') 
-            ? paymentIntent.customer 
+        const customerId = (typeof paymentIntent.customer === 'string')
+            ? paymentIntent.customer
             : (paymentIntent.customer?.id || '');
-            
+
         const paymentMethodId = (typeof paymentIntent.payment_method === 'string')
             ? paymentIntent.payment_method
             : (paymentIntent.payment_method?.id || '');
@@ -66,6 +66,49 @@ export async function POST(req: NextRequest) {
                 uuidSolicitud
             ]
         );
+
+        // 4. Retrieve solicitation data for subscription upsert
+        const solicitationData: any = await pool.query(
+            `SELECT IdSocio, IdSucursalSocio, IdSucursal, PagoRecurrente 
+             FROM tblSolicitudesStripe 
+             WHERE UUID = ?`,
+            [uuidSolicitud]
+        );
+
+        if (solicitationData.length > 0) {
+            const { IdSocio, IdSucursalSocio, IdSucursal, PagoRecurrente } = solicitationData[0];
+
+            // 5. Upsert subscription record
+            const existingSubscription: any = await pool.query(
+                `SELECT IdSocio FROM tblSuscripcionesStripe 
+                 WHERE IdSocio = ? AND IdSucursalSocio = ? AND IdSucursal = ?`,
+                [IdSocio, IdSucursalSocio, IdSucursal]
+            );
+
+            if (existingSubscription.length > 0) {
+                // Update
+                await pool.query(
+                    `UPDATE tblSuscripcionesStripe 
+                     SET UUID = ?, 
+                         PaymentMethod = ?, 
+                         CustomerId = ?, 
+                         PagoRecurrente = ?, 
+                         FechaAct = NOW(), 
+                         FechaProximoPago = DATE_ADD(NOW(), INTERVAL 1 MONTH), 
+                         Status = 0
+                     WHERE IdSocio = ? AND IdSucursalSocio = ? AND IdSucursal = ?`,
+                    [uuidSolicitud, paymentMethodId, customerId, PagoRecurrente, IdSocio, IdSucursalSocio, IdSucursal]
+                );
+            } else {
+                // Insert
+                await pool.query(
+                    `INSERT INTO tblSuscripcionesStripe 
+                     (UUID, IdSocio, IdSucursalSocio, IdSucursal, PaymentMethod, CustomerId, PagoRecurrente, FechaAct, FechaProximoPago, Status)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 1 MONTH), 0)`,
+                    [uuidSolicitud, IdSocio, IdSucursalSocio, IdSucursal, paymentMethodId, customerId, PagoRecurrente]
+                );
+            }
+        }
 
         return NextResponse.json({ success: true });
 
