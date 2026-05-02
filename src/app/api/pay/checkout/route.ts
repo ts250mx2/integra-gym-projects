@@ -98,6 +98,7 @@ export async function POST(req: NextRequest) {
             amount: Math.round(totalAmount * 100), // Stripe uses minor units (cents)
             currency: 'mxn', // Assuming MXN (Mexican Pesos)
             customer: customerId,
+            setup_future_usage: 'off_session',
             metadata: {
                 uuidProject,
                 uuidSolicitud

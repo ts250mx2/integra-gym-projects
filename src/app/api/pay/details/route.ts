@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 
         // Fetch Solicitation main info
         const [solicitationRows]: any = await pool.execute(
-            'SELECT CodigoSocio, Socio, Pagado, IdSocio, idSucursalSocio, EsRecurrente FROM tblSolicitudesStripe WHERE UUID = ?',
+            'SELECT CodigoSocio, Socio, Pagado, IdSocio, idSucursalSocio, EsRecurrente, PagoRecurrente FROM tblSolicitudesStripe WHERE UUID = ?',
             [uuidSolicitud]
         );
 
@@ -88,6 +88,7 @@ export async function GET(req: NextRequest) {
             },
             isRecurring: solicitation.EsRecurrente === 1,
             isPaid: solicitation.Pagado === 1,
+            pagoRecurrente: solicitation.PagoRecurrente || 0,
             items: details,
             total: totalAmount
         });

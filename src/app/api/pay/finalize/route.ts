@@ -47,6 +47,22 @@ export async function POST(req: NextRequest) {
             ? paymentIntent.payment_method
             : (paymentIntent.payment_method?.id || '');
 
+        // 2.1 Attach and set as default payment method for future off-session charges
+        if (customerId && paymentMethodId) {
+            try {
+                // Set as default for invoices and future payments
+                await stripe.customers.update(customerId, {
+                    invoice_settings: {
+                        default_payment_method: paymentMethodId,
+                    },
+                });
+                console.log(`DEBUG (pay/finalize): Payment method ${paymentMethodId} set as default for customer ${customerId}`);
+            } catch (err) {
+                console.error('DEBUG (pay/finalize): Error setting default payment method:', err);
+                // We don't block the process if this fails, but it's important for recurrence
+            }
+        }
+
         // 3. Connect to project-specific database and update solicitation
         const pool = await getProjectConnectionPool(IdProyecto, project);
 
@@ -68,45 +84,57 @@ export async function POST(req: NextRequest) {
         );
 
         // 4. Retrieve solicitation data for subscription upsert
-        const solicitationData: any = await pool.query(
-            `SELECT IdSocio, IdSucursalSocio, IdSucursal, PagoRecurrente 
+        console.log('DEBUG (pay/finalize): Fetching solicitation data for UUID:', uuidSolicitud);
+        const [rows]: any = await pool.query(
+            `SELECT IdSocio, IdSucursalSocio, IdSucursal, PagoRecurrente, IdCuotaRecurrente 
              FROM tblSolicitudesStripe 
              WHERE UUID = ?`,
             [uuidSolicitud]
         );
 
-        if (solicitationData.length > 0) {
-            const { IdSocio, IdSucursalSocio, IdSucursal, PagoRecurrente } = solicitationData[0];
+        if (rows && rows.length > 0) {
+            try {
+                const { IdSocio, IdSucursalSocio, IdSucursal, PagoRecurrente, IdCuotaRecurrente } = rows[0];
 
-            // 5. Upsert subscription record
-            const existingSubscription: any = await pool.query(
-                `SELECT IdSocio FROM tblSuscripcionesStripe 
-                 WHERE IdSocio = ? AND IdSucursalSocio = ? AND IdSucursal = ?`,
-                [IdSocio, IdSucursalSocio, IdSucursal]
-            );
-
-            if (existingSubscription.length > 0) {
-                // Update
-                await pool.query(
-                    `UPDATE tblSuscripcionesStripe 
-                     SET UUID = ?, 
-                         PaymentMethod = ?, 
-                         CustomerId = ?, 
-                         PagoRecurrente = ?, 
-                         FechaAct = NOW(), 
-                         FechaProximoPago = DATE_ADD(NOW(), INTERVAL 1 MONTH), 
-                         Status = 0
+                // 5. Upsert subscription record
+                console.log('DEBUG (pay/finalize): Checking existing subscription for Socio:', IdSocio, 'SucursalSocio:', IdSucursalSocio, 'Sucursal:', IdSucursal);
+                const [existingSubscription]: any = await pool.query(
+                    `SELECT IdSocio FROM tblSuscripcionesStripe 
                      WHERE IdSocio = ? AND IdSucursalSocio = ? AND IdSucursal = ?`,
-                    [uuidSolicitud, paymentMethodId, customerId, PagoRecurrente, IdSocio, IdSucursalSocio, IdSucursal]
+                    [IdSocio, IdSucursalSocio, IdSucursal]
                 );
-            } else {
-                // Insert
-                await pool.query(
-                    `INSERT INTO tblSuscripcionesStripe 
-                     (UUID, IdSocio, IdSucursalSocio, IdSucursal, PaymentMethod, CustomerId, PagoRecurrente, FechaAct, FechaProximoPago, Status)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 1 MONTH), 0)`,
-                    [uuidSolicitud, IdSocio, IdSucursalSocio, IdSucursal, paymentMethodId, customerId, PagoRecurrente]
-                );
+
+                if (existingSubscription.length > 0) {
+                    // Update
+                    console.log('DEBUG (pay/finalize): Updating existing subscription');
+                    const updateQuery = `UPDATE tblSuscripcionesStripe 
+                         SET UUID = ?, 
+                             PaymentMethod = ?, 
+                             CustomerId = ?, 
+                             PagoRecurrente = ?, 
+                             IdCuotaRecurrente = ?, 
+                             FechaAct = NOW(), 
+                             FechaProximoPago = DATE_ADD(NOW(), INTERVAL 1 MONTH), 
+                             Status = 0
+                         WHERE IdSocio = ? AND IdSucursalSocio = ? AND IdSucursal = ?`;
+                    const updateParams = [uuidSolicitud, paymentMethodId, customerId, PagoRecurrente, IdCuotaRecurrente, IdSocio, IdSucursalSocio, IdSucursal];
+                    console.log('DEBUG (pay/finalize): Query:', updateQuery);
+                    console.log('DEBUG (pay/finalize): Params:', updateParams);
+                    await pool.query(updateQuery, updateParams);
+                } else {
+                    // Insert
+                    console.log('DEBUG (pay/finalize): Inserting new subscription');
+                    const insertQuery = `INSERT INTO tblSuscripcionesStripe 
+                         (UUID, IdSocio, IdSucursalSocio, IdSucursal, PaymentMethod, CustomerId, PagoRecurrente, IdCuotaRecurrente, FechaAct, FechaProximoPago, Status)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 1 MONTH), 0)`;
+                    const insertParams = [uuidSolicitud, IdSocio, IdSucursalSocio, IdSucursal, paymentMethodId, customerId, PagoRecurrente, IdCuotaRecurrente];
+                    console.log('DEBUG (pay/finalize): Query:', insertQuery);
+                    console.log('DEBUG (pay/finalize): Params:', insertParams);
+                    await pool.query(insertQuery, insertParams);
+                }
+                console.log('DEBUG (pay/finalize): Subscription upsert successful');
+            } catch (subError: any) {
+                console.error('DEBUG (pay/finalize): ERROR in subscription upsert:', subError);
             }
         }
 

@@ -6,8 +6,50 @@ import { loadStripe, Stripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { ShoppingBag, User, CreditCard, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 
+function numeroALetras(num: number) {
+  const unidades = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
+  const decenas = ['DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+  const especiales = ['ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
+  const centenas = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
+
+  function convertir(n: number): string {
+    if (n === 0) return 'CERO';
+    if (n < 10) return unidades[n];
+    if (n === 10) return 'DIEZ';
+    if (n < 20) return especiales[n - 11];
+    if (n < 100) {
+      const u = n % 10;
+      const d = Math.floor(n / 10);
+      if (n === 20) return 'VEINTE';
+      if (n < 30) return 'VEINTI' + unidades[u];
+      return decenas[d - 1] + (u > 0 ? ' Y ' + unidades[u] : '');
+    }
+    if (n < 1000) {
+      if (n === 100) return 'CIEN';
+      const r = n % 100;
+      const c = Math.floor(n / 100);
+      return (c === 1 && r > 0 ? 'CIENTO' : centenas[c]) + (r > 0 ? ' ' + convertir(r) : '');
+    }
+    if (n < 1000000) {
+      if (n === 1000) return 'MIL';
+      const r = n % 1000;
+      const m = Math.floor(n / 1000);
+      const prefix = m === 1 ? 'MIL' : convertir(m) + ' MIL';
+      return prefix + (r > 0 ? ' ' + convertir(r) : '');
+    }
+    return n.toString();
+  }
+
+  const entero = Math.floor(num);
+  const decimales = Math.round((num - entero) * 100);
+  const letras = convertir(entero);
+  const centavos = decimales.toString().padStart(2, '0') + '/100 M.N.';
+  
+  return `${letras} PESOS ${centavos}`;
+}
+
 // Stripe CheckoutForm handles the actual payment submission
-function CheckoutForm({ clientSecret, total, onPaymentSuccess }: { clientSecret: string; total: number; onPaymentSuccess: (id: string) => Promise<void> }) {
+function CheckoutForm({ clientSecret, total, pagoRecurrente, onPaymentSuccess }: { clientSecret: string; total: number; pagoRecurrente: number; onPaymentSuccess: (id: string) => Promise<void> }) {
     const stripe = useStripe();
     const elements = useElements();
     const [message, setMessage] = useState<string | null>(null);
@@ -86,7 +128,7 @@ function CheckoutForm({ clientSecret, total, onPaymentSuccess }: { clientSecret:
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <strong>Autorizo el cargo recurrente mensual de mi membresía</strong>, aceptando que se realicen reintentos de cobro automáticos en caso de fallo. Comprendo que la cancelación de esta modalidad requiere una notificación escrita en recepción con una antelación mínima de <strong>30 días naturales.</strong>
+                    <strong>Autorizo el cargo recurrente por la cantidad de ${new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2 }).format(pagoRecurrente)} ({numeroALetras(pagoRecurrente)})</strong>, aceptando que se realicen reintentos de cobro automáticos en caso de fallo. Comprendo que la cancelación de esta modalidad requiere una notificación escrita en recepción con una antelación mínima de <strong>30 días naturales.</strong>
                 </label>
             </div>
             
@@ -338,7 +380,7 @@ function PayContent() {
                                 }
                             }}
                         >
-                            <CheckoutForm clientSecret={clientSecret} total={data.total} onPaymentSuccess={handlePaymentSuccess} />
+                            <CheckoutForm clientSecret={clientSecret} total={data.total} pagoRecurrente={data.pagoRecurrente} onPaymentSuccess={handlePaymentSuccess} />
                         </Elements>
                     ) : (
                         <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
