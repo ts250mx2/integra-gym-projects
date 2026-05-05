@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { 
     User, 
@@ -35,7 +35,7 @@ interface TrainingPlanData {
     Observaciones: string;
 }
 
-export default function TrainingPlanPage() {
+function TrainingPlanContent() {
     const searchParams = useSearchParams();
     const projectUuid = searchParams.get('projectUuid');
     const planUuid = searchParams.get('planUuid');
@@ -503,5 +503,17 @@ export default function TrainingPlanPage() {
                 }
             `}</style>
         </div>
+    );
+}
+
+export default function TrainingPlanPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+                <Loader2 className="w-12 h-12 text-[#39ff14] animate-spin" />
+            </div>
+        }>
+            <TrainingPlanContent />
+        </Suspense>
     );
 }
