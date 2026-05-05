@@ -380,5 +380,35 @@
         "colActions": "Actions",
         "yes": "Yes",
         "no": "No"
+    },
+    "TrainingPlan": {
+        "title": "Personalized Training Plan",
+        "subtitle": "Generated with Artificial Intelligence",
+        "form": {
+            "member": "Member",
+            "code": "Code",
+            "gender": "Gender",
+            "male": "Male",
+            "female": "Female",
+            "age": "Age",
+            "weight": "Weight (KG)",
+            "height": "Height (mts)",
+            "days": "Training days / week",
+            "minutes": "Minutes per session",
+            "observations": "Observations / Goals",
+            "generate": "Generate Plan with AI",
+            "generating": "Generating Plan...",
+            "save": "Save Data"
+        },
+        "result": {
+            "title": "Your Training Plan",
+            "download": "Download PDF",
+            "regenerate": "Regenerate Plan"
+        },
+        "messages": {
+            "success": "Data saved successfully",
+            "error": "There was an error processing the request",
+            "planGenerated": "Plan generated successfully"
+        }
     }
 }

@@ -388,5 +388,35 @@
     "colActions": "Acciones",
     "yes": "Sí",
     "no": "No"
+  },
+  "TrainingPlan": {
+    "title": "Plan de Entrenamiento Personalizado",
+    "subtitle": "Generado con Inteligencia Artificial",
+    "form": {
+      "member": "Socio",
+      "code": "Código",
+      "gender": "Género",
+      "male": "Hombre",
+      "female": "Mujer",
+      "age": "Edad",
+      "weight": "Peso (KG)",
+      "height": "Estatura (mts)",
+      "days": "Días de entrenamiento / semana",
+      "minutes": "Minutos por sesión",
+      "observations": "Observaciones / Objetivos",
+      "generate": "Generar Plan con IA",
+      "generating": "Generando Plan...",
+      "save": "Guardar Datos"
+    },
+    "result": {
+      "title": "Tu Plan de Entrenamiento",
+      "download": "Descargar PDF",
+      "regenerate": "Regenerar Plan"
+    },
+    "messages": {
+      "success": "Datos guardados correctamente",
+      "error": "Hubo un error al procesar la solicitud",
+      "planGenerated": "Plan generado con éxito"
+    }
   }
 }
