@@ -20,6 +20,8 @@ export async function GET(req: NextRequest) {
 
         const dbName = projectData[0].BaseDatos;
 
+        const hasBranch = branchId && branchId !== 0;
+
         // User provided query
         const sql = `
             SELECT 
@@ -33,22 +35,11 @@ export async function GET(req: NextRequest) {
             FROM \`${dbName}\`.tblVisitasRecientes A
             LEFT JOIN \`${dbName}\`.tblSocios B ON A.IdSocio = B.IdSocio
             LEFT JOIN \`${dbName}\`.tblUsuarios C ON A.IdUsuario = C.IdUsuario 
-            WHERE A.IdSucursal = ?
+            ${hasBranch ? 'WHERE A.IdSucursal = ?' : ''}
             ORDER BY FechaVisita DESC LIMIT 11
         `;
 
-        // Note: added WHERE A.IdSucursal = ? to filter by current branch, which seems critical for multi-branch.
-        // User didn't explicitly include it in their SQL but it is implied by the context.
-        // Wait, tblVisitasRecientes might not have IdSucursal? 
-        // Let's assume it does or follows standard schema. 
-        // If not, I'll remove it. But usually visits are branch specific.
-        // Actually, the user's query didn't have WHERE clause at all. 
-        // I should probably check if IdSucursal exists on tblVisitasRecientes first? 
-        // For safety, let's include it if possible, but earlier I only checked for table existence.
-        // Given the requirement "en la pagina de inicio" (dashboard), usually filtered by branch.
-        // I'll assume YES. If it fails I will fix.
-
-        const visits = await query(sql, [branchId]);
+        const visits = await query(sql, hasBranch ? [branchId] : []);
 
         return NextResponse.json(visits);
     } catch (error: any) {

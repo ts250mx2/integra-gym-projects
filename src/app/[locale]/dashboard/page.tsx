@@ -21,8 +21,9 @@ export default async function DashboardPage(props: { searchParams: Promise<any> 
     let gymLogo = null;
     let debugInfo: any = {};
 
-    if (session.projectId && session.branchId) {
+    if (session.projectId) {
         try {
+            const hasBranch = session.branchId && session.branchId !== 0;
             const [salesResult, membersResult, visitsResult, attendanceResult] = await Promise.all([
                 projectQuery(
                     session.projectId,
@@ -30,17 +31,17 @@ export default async function DashboardPage(props: { searchParams: Promise<any> 
                      FROM tblVentas 
                      WHERE DATE(FechaVenta) = CURDATE() 
                      AND Status = 0 
-                     AND IdSucursal = ?`,
-                    [session.branchId]
+                     ${hasBranch ? 'AND IdSucursal = ?' : ''}`,
+                    hasBranch ? [session.branchId] : []
                 ) as Promise<any[]>,
                 projectQuery(
                     session.projectId,
                     `SELECT COUNT(IdSocio) AS SociosActivos 
                      FROM tblSocios 
                      WHERE Status = 0 
-                     AND IdSucursal = ? 
-                     AND FechaVencimiento > NOW()`,
-                    [session.branchId]
+                     AND FechaVencimiento > NOW()
+                     ${hasBranch ? 'AND IdSucursal = ?' : ''}`,
+                    hasBranch ? [session.branchId] : []
                 ) as Promise<any[]>,
                 projectQuery(
                     session.projectId,
@@ -48,8 +49,8 @@ export default async function DashboardPage(props: { searchParams: Promise<any> 
                      FROM tblVisitas 
                      WHERE IdSocio > 0 
                      AND DATE(FechaVisita) = CURDATE() 
-                     AND IdSucursal = ?`,
-                    [session.branchId]
+                     ${hasBranch ? 'AND IdSucursal = ?' : ''}`,
+                    hasBranch ? [session.branchId] : []
                 ) as Promise<any[]>,
                 projectQuery(
                     session.projectId,
@@ -57,8 +58,8 @@ export default async function DashboardPage(props: { searchParams: Promise<any> 
                      FROM tblVisitas 
                      WHERE IdUsuario > 0 
                      AND DATE(FechaVisita) = CURDATE() 
-                     AND IdSucursal = ?`,
-                    [session.branchId]
+                     ${hasBranch ? 'AND IdSucursal = ?' : ''}`,
+                    hasBranch ? [session.branchId] : []
                 ) as Promise<any[]>
             ]);
 

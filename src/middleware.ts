@@ -8,13 +8,13 @@ const intlMiddleware = createMiddleware({
     localePrefix: 'always'
 });
 
-const DASHBOARD_V1_RE = /^\/(es|en|pt|fr)\/dashboard-v1(\/|$)/;
+const DASHBOARD_RE = /^\/(es|en|pt|fr)\/dashboard(-v1)?(\/|$)/;
 
 export default function middleware(req: NextRequest) {
     const url = req.nextUrl;
     const projectUuid = url.searchParams.get('projectUuid');
 
-    if (projectUuid && DASHBOARD_V1_RE.test(url.pathname)) {
+    if (projectUuid && DASHBOARD_RE.test(url.pathname)) {
         const bootstrapUrl = new URL('/api/auth/project-session', req.url);
         bootstrapUrl.searchParams.set('projectUuid', projectUuid);
         bootstrapUrl.searchParams.set('returnTo', url.pathname);
