@@ -72,6 +72,47 @@ tblSocios: IdSocio, IdSucursal, Socio(nombre)/Nombres, CodigoSocio, CodigoBarras
   • ALTAS/NUEVOS socios del período: filtra por su fecha de alta (FechaAlta o FechaAct).
   • La membresía se renueva al vender una cuota con TipoMembresia=1: la venta
     actualiza tblSocios.FechaVencimiento.
+
+  ⚠️ RENOVACIONES Y VENCIMIENTOS HISTÓRICOS — REGLA OBLIGATORIA (error #1):
+  tblSocios.FechaVencimiento es el vencimiento ACTUAL y la renovación lo SOBRESCRIBE
+  empujándolo al futuro. Por eso NUNCA uses tblSocios.FechaVencimiento para responder
+  "quién venció en el mes/período X" ni "cuántos renovaron/no renovaron": los que
+  renovaron ya no aparecen como vencidos y el conteo sale mal.
+  El historial real de coberturas vive en tblDetalleMovimientos (FechaInicio, FechaFin,
+  TipoCuota=1 = membresía). Usa SIEMPRE FechaFin, no FechaVencimiento, para vencimientos
+  históricos. Patrón canónico (ajusta el rango del período):
+    WITH bounds AS (
+      SELECT DATE_FORMAT(CURDATE() - INTERVAL 1 MONTH, '%Y-%m-01') AS lmStart,
+             DATE_FORMAT(CURDATE(), '%Y-%m-01')                    AS thisStart
+    ),
+    mem AS (                       -- coberturas de membresía vendidas
+      SELECT d.IdSocio, d.FechaFin
+      FROM tblDetalleMovimientos d
+      JOIN tblMovimientos m ON m.IdMovimiento = d.IdMovimiento AND m.IdSucursal = d.IdSucursal
+      WHERE m.Status <> 2 AND d.TipoCuota = 1 AND d.FechaFin IS NOT NULL
+    ),
+    ult AS (                       -- última cobertura terminada antes de este mes
+      SELECT mem.IdSocio, MAX(mem.FechaFin) AS ultimoFin
+      FROM mem CROSS JOIN bounds b WHERE mem.FechaFin < b.thisStart GROUP BY mem.IdSocio
+    ),
+    vencieron AS (                 -- esa última cobertura cayó EN el período pasado
+      SELECT u.IdSocio, u.ultimoFin FROM ult u CROSS JOIN bounds b
+      WHERE u.ultimoFin >= b.lmStart AND u.ultimoFin < b.thisStart
+    ),
+    renov AS (                     -- tienen cobertura de este mes en adelante = renovaron
+      SELECT DISTINCT mem.IdSocio FROM mem CROSS JOIN bounds b WHERE mem.FechaFin >= b.thisStart
+    )
+    SELECT COUNT(*) AS vencieron, SUM(r.IdSocio IS NOT NULL) AS renovaron,
+           SUM(r.IdSocio IS NULL) AS no_renovaron
+    FROM vencieron v LEFT JOIN renov r ON r.IdSocio = v.IdSocio;
+  - "vencieron en el período" = su última cobertura (FechaFin) que terminó antes del mes
+    actual cae dentro del período pedido.
+  - "renovaron" = de esos, los que tienen otra membresía con FechaFin que se extiende al
+    mes actual o después (volvieron a tener cobertura). "no renovaron" = el resto.
+  - Para la LISTA de los que no renovaron (cobranza): mismos CTE + JOIN tblSocios y trae
+    Socio + OtroTelefono + DATE(ultimoFin); filtra r.IdSocio IS NULL.
+  - Para otro período (ej. "abril"), cambia lmStart/thisStart por el inicio del período y el
+    inicio del período siguiente. Para una sucursal, agrega AND m.IdSucursal = <id> en mem.
 tblSociosFotos: IdSocio, IdSucursal, Foto(blob), EsUltimaFoto(1=vigente).
 
 ───────────────────────────────────────────────────────────
