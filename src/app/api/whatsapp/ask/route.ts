@@ -135,7 +135,7 @@ const AGENT_TOOLS: any[] = [
         description: `Ejecuta SQL SELECT/WITH de solo lectura contra la BD MySQL del gimnasio.
 REGLAS:
 - VENTAS: exclusivamente tblMovimientos (fecha FechaMovimiento), detalle tblDetalleMovimientos, pagos tblMovimientosPagos. NUNCA tblVentas.
-- CLIENTES/SOCIOS: tblSocios. ACTIVO = Status = 0 AND FechaVencimiento >= CURDATE(). Al listar o consultar socios que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' para poder mostrar sus teléfonos de contacto.
+- CLIENTES/SOCIOS: tblSocios. ACTIVO = Status = 0 AND FechaVencimiento >= CURDATE(). El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (tiene mayor prioridad que su correo electrónico 'CorreoElectronico'). Al listar o consultar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' como contacto principal.
 - VISITAS de socios: tblVisitas (FechaVisita). ASISTENCIAS de empleados: tblAsistencias (FechaAsistencia).
 - PRODUCTOS/membresías: tblCuotas (TipoCuota=1 membresía, =2 producto).
 - Status=2 = cancelado/eliminado: filtra "Status <> 2".

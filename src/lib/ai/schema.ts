@@ -67,7 +67,7 @@ tblSocios: IdSocio, IdSucursal, Socio(nombre)/Nombres, CodigoSocio, CodigoBarras
   • SOCIO/CLIENTE ACTIVO (membresía vigente): Status = 0 AND FechaVencimiento >= CURDATE().
   • SOCIO/CLIENTE VENCIDO: Status = 0 AND FechaVencimiento < CURDATE().
   • "Por vencer en N días": FechaVencimiento BETWEEN CURDATE() AND CURDATE()+INTERVAL N DAY.
-  • REGLA OBLIGATORIA DE TELÉFONOS: Al consultar, listar o reportar socios que vencen, por vencer o vencidos, la consulta SQL generada DEBE incluir SIEMPRE la columna 'OtroTelefono' (teléfono de contacto).
+  • REGLA OBLIGATORIA DE CONTACTO: Para el agente, el dato de contacto principal y prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (tiene mayor prioridad que su correo electrónico 'CorreoElectronico'). Al consultar, listar o reportar socios (especialmente los que vencen, por vencer o vencidos) para efectos de contacto o cobranza, la consulta SQL generada DEBE incluir SIEMPRE la columna 'OtroTelefono' como canal de contacto prioritario.
   • ALTAS/NUEVOS socios del período: filtra por su fecha de alta (FechaAlta o FechaAct).
   • La membresía se renueva al vender una cuota con TipoMembresia=1: la venta
     actualiza tblSocios.FechaVencimiento.
