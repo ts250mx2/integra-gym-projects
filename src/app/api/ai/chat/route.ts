@@ -6,6 +6,7 @@ import { DATABASE_SCHEMA } from '@/lib/ai/schema';
 import { buildProjectCatalog } from '@/lib/ai/catalog';
 import { createSseStream, SSE_HEADERS } from '@/lib/ai/sse';
 import { query as globalQuery } from '@/lib/db';
+import { v4 as uuidv4 } from 'uuid';
 
 const MAX_TURNS = 12;
 
@@ -32,6 +33,44 @@ async function runToolBlocks(
     const toolResults: any[] = [];
     for (const block of content) {
         if (block.type !== 'tool_use') continue;
+
+        if (block.name === 'create_training_plan') {
+            const input = block.input as any;
+            const uuid = uuidv4();
+            const { socio, codigoSocio, genero, edad, peso, estatura, dias, minutos, observaciones } = input;
+            
+            const g = genero != null ? Number(genero) : 1;
+            const e = edad != null ? Number(edad) : 0;
+            const p = peso != null ? Number(peso) : 0.0;
+            const est = estatura != null ? Number(estatura) : 0.0;
+            const d = dias != null ? Number(dias) : 3;
+            const m = minutos != null ? Number(minutos) : 60;
+            const obs = observaciones || '';
+
+            try {
+                await pool.execute(
+                    `INSERT INTO tblPlanesEntrenamiento 
+                     (Socio, CodigoSocio, Genero, Edad, Peso, Estatura, Dias, Minutos, Observaciones, UUID, FechaPlanEntrenamiento) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+                    [socio, codigoSocio, g, e, p, est, d, m, obs, uuid]
+                );
+                
+                toolResults.push({
+                    type:        'tool_result',
+                    tool_use_id: block.id,
+                    content:     JSON.stringify({ success: true, uuid, message: 'Plan de entrenamiento creado correctamente.' }),
+                });
+            } catch (err: any) {
+                toolResults.push({
+                    type:        'tool_result',
+                    tool_use_id: block.id,
+                    content:     JSON.stringify({ error: err.message }),
+                    is_error:    true,
+                });
+            }
+            continue;
+        }
+
         const sql = (block.input as any)?.sql || '';
         if (sql) executedSql.push(sql);
         try {
@@ -52,9 +91,7 @@ async function runToolBlocks(
         }
     }
     return toolResults;
-}
-
-const AGENT_TOOLS: any[] = [
+}const AGENT_TOOLS: any[] = [
     {
         name: 'query_database',
         description: `Ejecuta SQL SELECT/WITH de solo lectura contra la BD MySQL del gimnasio.
@@ -71,7 +108,7 @@ REGLAS OBLIGATORIAS:
 - Cuotas/Productos: TipoCuota=1 membresía/cuota; TipoCuota=2 producto de tienda.
 - MySQL: LIMIT obligatorio en listados. Nunca TOP.
 - Usa los IDs reales del catálogo del proyecto (sucursales, formas de pago, grupos horarios, cuotas).
-Puedes encadenar múltiples llamadas para explorar antes de responder.`,
+- Puedes encadenar múltiples llamadas para explorar antes de responder.`,
         input_schema: {
             type: 'object',
             properties: {
@@ -111,6 +148,26 @@ CUÁNDO NO USARLA:
             required: ['question', 'suggestions'],
         },
     },
+    {
+        name: 'create_training_plan',
+        description: `Crea un nuevo registro de plan de entrenamiento en la base de datos para el socio especificado. Devuelve el UUID generado.
+Usa esta herramienta cuando el usuario pida registrar, diseñar o ver una rutina de entrenamiento para un socio y NO exista un registro previo en 'tblPlanesEntrenamiento'.`,
+        input_schema: {
+            type: 'object',
+            properties: {
+                socio: { type: 'string', description: 'Nombre completo del socio' },
+                codigoSocio: { type: 'string', description: 'Código del socio' },
+                genero: { type: 'number', description: 'Género (1 = Hombre, 2 = Mujer)' },
+                edad: { type: 'number', description: 'Edad del socio' },
+                peso: { type: 'number', description: 'Peso en kg' },
+                estatura: { type: 'number', description: 'Estatura en metros' },
+                dias: { type: 'number', description: 'Días de entrenamiento recomendados a la semana (por defecto 3)' },
+                minutos: { type: 'number', description: 'Minutos por sesión recomendados (por defecto 60)' },
+                observaciones: { type: 'string', description: 'Objetivos u observaciones de entrenamiento del socio' }
+            },
+            required: ['socio', 'codigoSocio']
+        }
+    }
 ];
 
 // ─── System prompt ────────────────────────────────────────────────────────────
@@ -336,7 +393,13 @@ REGLAS ADICIONALES:
 - Para CLIENTES consulta siempre la tabla tblSocios. El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (vale más y es más importante que su correo). Al consultar o listar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' en tu SELECT. Si pide consulta de Hombres/Mujeres, debes consultar el campo 'Sexo' en 'tblSocios', donde: 0 o 1 = Hombre, y 2 = Mujer.
 - Para ASISTENCIAS de empleados usa la tabla tblAsistencias. Para visitas de socios usa tblVisitas. Al preguntar por la asistencia de una persona por su nombre (ej. "asistencia de Juan"), primero búscala en 'tblSocios' y si existe consulta en 'tblVisitas' usando 'IdSocio'; si no existe en 'tblSocios', búscala en 'tblUsuarios' y si existe ahí, consulta 'tblAsistencias' usando 'IdUsuario'.
 - Para PRODUCTOS usa tblCuotas (IdCuota es IdProducto, Cuota es Producto).
-- Para RUTINAS Y PLANES DE ENTRENAMIENTO: Si preguntan por su rutina registrada, consulta 'tblPlanesEntrenamiento' y proporciona un resumen con su enlace [Ver, Editar e Imprimir mi Plan de Entrenamiento](${trainingPlanBaseUrl}&planUuid=[UUID]) (sustituyendo [UUID] por el UUID real del plan encontrado). Si piden que les hagas o diseñes una rutina en el chat, asume el rol de un Entrenador Personal de Élite y diséñala de forma profesional, detallada y estructurada día por día en el chat.
+- Para RUTINAS Y PLANES DE ENTRENAMIENTO: Si preguntan por su rutina registrada (ej: "dame mi rutina de Juan Perez", "ver mi plan"):
+  1. Busca primero en 'tblPlanesEntrenamiento' por 'Socio' o 'CodigoSocio'.
+  2. Si NO existe el registro en 'tblPlanesEntrenamiento', ¡debes CREARLO usando la herramienta 'create_training_plan'! Primero busca al socio y sus datos básicos (nombre, código, sexo, edad) en 'tblSocios' para pasárselos a la herramienta.
+  3. Una vez creado el plan (o si ya existía):
+     - Si tiene 'PlanEntrenamiento' con contenido, preséntale un resumen claro y el enlace [Ver, Editar e Imprimir mi Plan de Entrenamiento](${trainingPlanBaseUrl}&planUuid=[UUID]) (con el UUID real).
+     - Si está vacío, dile de forma entusiasta que tiene su perfil listo para generar su rutina y dale el enlace para que lo genere con un solo clic: [Ver, Editar e Imprimir mi Plan de Entrenamiento](${trainingPlanBaseUrl}&planUuid=[UUID]).
+  4. Si piden diseñar una rutina directamente en el chat, asume el rol de un Entrenador Personal de Élite y genérala con estructura completa.
 - Si ves muchos socios por vencer o asistencia cayendo, menciónalo con el dato y una acción.
 - Al comparar meses, SIEMPRE menciona los nombres (ej. "Mayo vs Abril").`;
 

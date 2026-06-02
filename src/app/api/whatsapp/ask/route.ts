@@ -143,7 +143,7 @@ REGLAS:
 - PLANES Y RUTINAS: tblPlanesEntrenamiento. Si preguntan por su rutina o plan de entrenamiento, consulta 'tblPlanesEntrenamiento' y resume su plan o dale el enlace [Ver mi Plan de Entrenamiento](/training-plan?projectUuid=[projectUuid]&planUuid=[UUID]). Si piden diseñar una rutina en el chat, asume el rol de un Entrenador Personal de Élite y genérala directamente.
 - Status=2 = cancelado/eliminado: filtra "Status <> 2".
 - Fechas DATETIME reales: usa DATE()/MONTH()/YEAR()/BETWEEN. MySQL: LIMIT obligatorio. Nunca TOP.
-Puedes encadenar varias llamadas para explorar antes de responder.`,
+- Puedes encadenar varias llamadas para explorar antes de responder.`,
         input_schema: {
             type: 'object',
             properties: {
@@ -152,6 +152,26 @@ Puedes encadenar varias llamadas para explorar antes de responder.`,
             required: ['sql'],
         },
     },
+    {
+        name: 'create_training_plan',
+        description: `Crea un nuevo registro de plan de entrenamiento en la base de datos para el socio especificado. Devuelve el UUID generado.
+Usa esta herramienta cuando el usuario pida registrar, diseñar o ver una rutina de entrenamiento para un socio y NO exista un registro previo en 'tblPlanesEntrenamiento'.`,
+        input_schema: {
+            type: 'object',
+            properties: {
+                socio: { type: 'string', description: 'Nombre completo del socio' },
+                codigoSocio: { type: 'string', description: 'Código del socio' },
+                genero: { type: 'number', description: 'Género (1 = Hombre, 2 = Mujer)' },
+                edad: { type: 'number', description: 'Edad del socio' },
+                peso: { type: 'number', description: 'Peso en kg' },
+                estatura: { type: 'number', description: 'Estatura en metros' },
+                dias: { type: 'number', description: 'Días de entrenamiento recomendados a la semana (por defecto 3)' },
+                minutos: { type: 'number', description: 'Minutos por sesión recomendados (por defecto 60)' },
+                observaciones: { type: 'string', description: 'Objetivos u observaciones de entrenamiento del socio' }
+            },
+            required: ['socio', 'codigoSocio']
+        }
+    }
 ];
 
 async function executeQuery(pool: any, sql: string): Promise<any[]> {
@@ -167,6 +187,44 @@ async function runToolBlocks(pool: any, content: any[], executedSql: string[]): 
     const toolResults: any[] = [];
     for (const block of content) {
         if (block.type !== 'tool_use') continue;
+
+        if (block.name === 'create_training_plan') {
+            const input = block.input as any;
+            const uuid = uuidv4();
+            const { socio, codigoSocio, genero, edad, peso, estatura, dias, minutes, minutos, observaciones } = input;
+            
+            const g = genero != null ? Number(genero) : 1;
+            const e = edad != null ? Number(edad) : 0;
+            const p = peso != null ? Number(peso) : 0.0;
+            const est = estatura != null ? Number(estatura) : 0.0;
+            const d = dias != null ? Number(dias) : 3;
+            const m = minutos != null ? Number(minutos) : (minutes != null ? Number(minutes) : 60);
+            const obs = observaciones || '';
+
+            try {
+                await pool.execute(
+                    `INSERT INTO tblPlanesEntrenamiento 
+                     (Socio, CodigoSocio, Genero, Edad, Peso, Estatura, Dias, Minutos, Observaciones, UUID, FechaPlanEntrenamiento) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+                    [socio, codigoSocio, g, e, p, est, d, m, obs, uuid]
+                );
+                
+                toolResults.push({
+                    type: 'tool_result',
+                    tool_use_id: block.id,
+                    content: JSON.stringify({ success: true, uuid, message: 'Plan de entrenamiento creado correctamente.' }),
+                });
+            } catch (err: any) {
+                toolResults.push({
+                    type: 'tool_result',
+                    tool_use_id: block.id,
+                    content: JSON.stringify({ error: err.message }),
+                    is_error: true,
+                });
+            }
+            continue;
+        }
+
         const sql = String((block.input as any)?.sql || '').replace(/```sql|```/g, '').trim();
         if (sql) executedSql.push(sql);
         try {
@@ -221,8 +279,11 @@ INTERPRETACIÓN DE PERÍODO:
 ──────────────────────────────────────────────────────────────
 REGLA OBLIGATORIA DE PLANES Y RUTINAS:
 - Al responder sobre la rutina o plan de entrenamiento de un usuario:
-  * Proporciónale SIEMPRE en tu respuesta el enlace directo público para ver, editar o compartir su rutina: ${trainingPlanBaseUrl}&planUuid=[UUID] (sustituyendo [UUID] por la columna UUID real obtenida de tblPlanesEntrenamiento).
-  * Ejemplo: "Puedes abrir, descargar en PDF y compartir tu rutina aquí: ${trainingPlanBaseUrl}&planUuid=..."
+  1. Busca primero en 'tblPlanesEntrenamiento' por 'Socio' o 'CodigoSocio'.
+  2. Si NO existe el registro en 'tblPlanesEntrenamiento', ¡debes CREARLO usando la herramienta 'create_training_plan'! Primero busca al socio y sus datos básicos (nombre, código, sexo, edad) en 'tblSocios' para pasárselos a la herramienta.
+  3. Una vez creado el plan (o si ya existía):
+     * Proporciónale SIEMPRE en tu respuesta el enlace directo público para ver, editar, generar o compartir su rutina: ${trainingPlanBaseUrl}&planUuid=[UUID] (sustituyendo [UUID] por la columna UUID real o generada).
+     * Ejemplo: "Puedes abrir, descargar en PDF y compartir tu rutina aquí: ${trainingPlanBaseUrl}&planUuid=..."
 ──────────────────────────────────────────────────────────────
 
 ${DATABASE_SCHEMA}
