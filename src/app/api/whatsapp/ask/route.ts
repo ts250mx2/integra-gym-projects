@@ -135,7 +135,7 @@ const AGENT_TOOLS: any[] = [
         description: `Ejecuta SQL SELECT/WITH de solo lectura contra la BD MySQL del gimnasio.
 REGLAS:
 - VENTAS: exclusivamente tblMovimientos (fecha FechaMovimiento), detalle tblDetalleMovimientos, pagos tblMovimientosPagos. NUNCA tblVentas.
-- CLIENTES/SOCIOS: tblSocios. ACTIVO = Status = 0 AND FechaVencimiento >= CURDATE(). El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (tiene mayor prioridad que su correo electrónico 'CorreoElectronico'). Al listar o consultar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' como contacto principal.
+- CLIENTES/SOCIOS: tblSocios. ACTIVO = Status = 0 AND FechaVencimiento >= CURDATE(). El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (tiene mayor prioridad que su correo electrónico 'CorreoElectronico'). Al listar o consultar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' como contacto principal. Si pide consulta de Hombres/Mujeres, debes consultar el campo 'Sexo' en 'tblSocios', donde: 0 o 1 = Hombre, y 2 = Mujer.
 - VISITAS de socios: tblVisitas (FechaVisita). ASISTENCIAS de empleados: tblAsistencias (FechaAsistencia).
 - PRODUCTOS/membresías: tblCuotas (TipoCuota=1 membresía, =2 producto).
 - Status=2 = cancelado/eliminado: filtra "Status <> 2".
@@ -237,10 +237,12 @@ bloque cercado \`\`\`report con un JSON en UNA sola línea con esta forma:
 \`\`\`
 
 REGLAS DEL BLOQUE report:
-- El TEXTO de WhatsApp va ANTES del bloque y debe entenderse SOLO (resume el dato clave); el bloque es el detalle ampliado.
+- OBLIGATORIO cuando la respuesta sea una LISTA de varios registros (socios que vencen/vencidos con su teléfono, top productos, ventas por día, movimientos, socios por sucursal, etc.): SIEMPRE genera "tables" con TODAS las filas relevantes. NO metas la lista completa en el texto de WhatsApp.
+- En esos casos el TEXTO de WhatsApp es SOLO un resumen de 1-2 frases (cuántos son, total, lo más relevante). El detalle completo va en la tabla, que el usuario abrirá con el link que agrega el sistema.
+- El TEXTO va ANTES del bloque y debe entenderse SOLO; el bloque es el detalle ampliado.
+- "tables": [{"title","columns":[...],"rows":[[...]]}]. Incluye las columnas útiles (p. ej. para socios: Nombre, Teléfono (OtroTelefono), Vence). Números crudos.
 - "charts": "type" bar|line|pie, "format" currency|number|percent, "data":[{"name","value","value2"?}], "seriesLabels"?:[..]. Máx ~12 puntos, valores crudos (sin $, comas ni %).
-- "tables": [{"title","columns":[...],"rows":[[...]]}]. Números crudos.
-- Incluye "tables", "charts" o ambos. Omite el bloque por completo para respuestas de un solo número, saludos o conceptos.
+- Incluye "tables", "charts" o ambos. Omite el bloque por completo SOLO para respuestas de un único número, saludos o conceptos.
 - NO menciones el link ni el bloque en el texto; el sistema agrega el enlace automáticamente.
 
 Devuelve SOLO el texto (y, si aplica, el bloque \`\`\`report al final). Sin prefijos.`;

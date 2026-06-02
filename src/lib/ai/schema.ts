@@ -58,7 +58,7 @@ Las ventas del gimnasio se obtienen exclusivamente de la familia de tablas de mo
 SOCIOS / CLIENTES
 ───────────────────────────────────────────────────────────
 tblSocios: IdSocio, IdSucursal, Socio(nombre)/Nombres, CodigoSocio, CodigoBarras,
-           TarjetaRFID, Telefono, OtroTelefono, CorreoElectronico, Genero(1=H,2=M), Pais, Estado,
+           TarjetaRFID, Telefono, OtroTelefono, CorreoElectronico, Sexo(0,1=Hombre, 2=Mujer), Pais, Estado,
            Localidad, CodigoPostal, ContactoEmergencia, FechaAlta/FechaAct,
            FechaVencimiento(datetime — fin de su membresía), Status(0=activo,2=baja),
            ArchivoFoto, FotoActiva
@@ -68,6 +68,7 @@ tblSocios: IdSocio, IdSucursal, Socio(nombre)/Nombres, CodigoSocio, CodigoBarras
   • SOCIO/CLIENTE VENCIDO: Status = 0 AND FechaVencimiento < CURDATE().
   • "Por vencer en N días": FechaVencimiento BETWEEN CURDATE() AND CURDATE()+INTERVAL N DAY.
   • REGLA OBLIGATORIA DE CONTACTO: Para el agente, el dato de contacto principal y prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (tiene mayor prioridad que su correo electrónico 'CorreoElectronico'). Al consultar, listar o reportar socios (especialmente los que vencen, por vencer o vencidos) para efectos de contacto o cobranza, la consulta SQL generada DEBE incluir SIEMPRE la columna 'OtroTelefono' como canal de contacto prioritario.
+  • CONSULTA DE HOMBRES / MUJERES (GÉNERO/SEXO): Si se pide una consulta de Hombres/Mujeres, debes consultar en tblSocios la columna 'Sexo', donde: 0 o 1 = Hombre, y 2 = Mujer.
   • ALTAS/NUEVOS socios del período: filtra por su fecha de alta (FechaAlta o FechaAct).
   • La membresía se renueva al vender una cuota con TipoMembresia=1: la venta
     actualiza tblSocios.FechaVencimiento.
