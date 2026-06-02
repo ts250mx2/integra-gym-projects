@@ -1,40 +1,9 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Brain, FileDown } from 'lucide-react';
 import AgentChart from '@/components/AgentChart';
-import type { ReportPdfChartImage } from '@/utils/generateReportPDF';
-
-// Captura el SVG de una gráfica (recharts) a PNG con fondo oscuro (igual que en pantalla).
-function svgToPng(svg: SVGSVGElement, scale = 2, bg = '#0f172a'): Promise<{ dataUrl: string; w: number; h: number } | null> {
-    return new Promise((resolve) => {
-        try {
-            const rect = svg.getBoundingClientRect();
-            const w = Math.max(1, Math.round(rect.width));
-            const h = Math.max(1, Math.round(rect.height));
-            const clone = svg.cloneNode(true) as SVGSVGElement;
-            clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-            clone.setAttribute('width', String(w));
-            clone.setAttribute('height', String(h));
-            const xml = new XMLSerializer().serializeToString(clone);
-            const src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(xml)));
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = w * scale; canvas.height = h * scale;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) { resolve(null); return; }
-                ctx.scale(scale, scale);
-                ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
-                ctx.drawImage(img, 0, 0, w, h);
-                resolve({ dataUrl: canvas.toDataURL('image/png'), w, h });
-            };
-            img.onerror = () => resolve(null);
-            img.src = src;
-        } catch { resolve(null); }
-    });
-}
 
 interface TableSpec { title?: string; columns: string[]; rows: any[][]; }
 interface ReportData {
@@ -103,6 +72,7 @@ function ReportContent() {
     const [data, setData] = useState<ReportData | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [exporting, setExporting] = useState(false);
 
     useEffect(() => {
         if (!r) { setError('Falta el identificador del reporte.'); setLoading(false); return; }
@@ -117,19 +87,54 @@ function ReportContent() {
     }, [r]);
 
     const fecha = data?.fecha ? new Date(data.fecha).toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' }) : '';
+    const hasContent = !!data && ((data.charts?.length || 0) > 0 || (data.tables?.length || 0) > 0);
+
+    const exportPdf = async () => {
+        if (!data || exporting) return;
+        setExporting(true);
+        try {
+            const { generateReportPDF } = await import('@/utils/generateReportPDF');
+            generateReportPDF({
+                title: data.title,
+                gymName: data.gymName,
+                fecha: data.fecha,
+                question: data.question,
+                answer: data.answer,
+                charts: data.charts || [],
+                tables: data.tables || [],
+            });
+        } catch (e) {
+            console.error('No se pudo exportar el PDF:', e);
+        } finally {
+            setExporting(false);
+        }
+    };
 
     return (
         <div style={{ minHeight: '100vh', background: BG, color: TXT, padding: '24px 16px' }}>
             <div style={{ maxWidth: 760, margin: '0 auto' }}>
                 {/* Header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                    <div style={{ width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,243,255,0.1)', border: `1px solid ${ACCENT}` }}>
-                        <Brain size={24} color={ACCENT} />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,243,255,0.1)', border: `1px solid ${ACCENT}` }}>
+                            <Brain size={24} color={ACCENT} />
+                        </div>
+                        <div>
+                            <div style={{ fontWeight: 800, letterSpacing: 0.5, fontSize: 16 }}>Agente Integra Gym</div>
+                            <div style={{ fontSize: 12, color: MUTED }}>{data?.gymName || 'Reporte'}{fecha ? ` · ${fecha}` : ''}</div>
+                        </div>
                     </div>
-                    <div>
-                        <div style={{ fontWeight: 800, letterSpacing: 0.5, fontSize: 16 }}>Agente Integra Gym</div>
-                        <div style={{ fontSize: 12, color: MUTED }}>{data?.gymName || 'Reporte'}{fecha ? ` · ${fecha}` : ''}</div>
-                    </div>
+                    {hasContent && (
+                        <button onClick={exportPdf} disabled={exporting}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 14px', borderRadius: 12,
+                                border: `1px solid ${ACCENT}`, background: 'rgba(0,243,255,0.08)', color: ACCENT,
+                                fontSize: 13, fontWeight: 700, cursor: exporting ? 'default' : 'pointer', opacity: exporting ? 0.6 : 1, whiteSpace: 'nowrap',
+                            }}>
+                            <FileDown size={15} />
+                            {exporting ? 'Generando…' : 'Exportar PDF'}
+                        </button>
+                    )}
                 </div>
 
                 {loading && <div style={{ color: MUTED, padding: 40, textAlign: 'center' }}>Cargando reporte…</div>}
