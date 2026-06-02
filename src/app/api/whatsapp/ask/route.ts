@@ -47,6 +47,7 @@ interface PhoneProject {
     Proyecto: string;
     Nombre: string | null;
     ProyectoActivo: number; // 1 = es el proyecto activo de este teléfono
+    projectUuid: string;
 }
 
 // ─── Menú pendiente por número (transitorio, en memoria) ───────────────────────
@@ -103,7 +104,7 @@ async function findProjectsForPhone(fromPhone: string): Promise<PhoneProject[]> 
     if (tail.length < 8) return [];
     // Compara por los últimos 10 dígitos, ignorando lada/espacios/signos del registro.
     const rows = await query(
-        `SELECT t.IdProyecto, t.Nombre, t.ProyectoActivo, p.Proyecto
+        `SELECT t.IdProyecto, t.Nombre, t.ProyectoActivo, p.Proyecto, p.UUID AS projectUuid
          FROM tblProyectosTelefonos t
          JOIN tblProyectos p ON t.IdProyecto = p.IdProyecto
          WHERE ${normPhoneSql('t.Telefono')} = ?
@@ -123,6 +124,7 @@ async function findProjectsForPhone(fromPhone: string): Promise<PhoneProject[]> 
             Proyecto: String(r.Proyecto || `Proyecto ${id}`),
             Nombre: r.Nombre ?? null,
             ProyectoActivo: Number(r.ProyectoActivo) || 0,
+            projectUuid: String(r.projectUuid || ''),
         });
     }
     return out;
@@ -187,7 +189,7 @@ async function runToolBlocks(pool: any, content: any[], executedSql: string[]): 
     return toolResults;
 }
 
-function buildSystemPrompt(projectCatalog: string, gymName: string): string {
+function buildSystemPrompt(projectCatalog: string, gymName: string, projectUuid: string, baseUrl: string): string {
     const now = new Date();
     const fecha = now.toLocaleString('es-MX', { timeZone: 'America/Monterrey', dateStyle: 'full', timeStyle: 'short' });
     const monthNames = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -205,6 +207,8 @@ function buildSystemPrompt(projectCatalog: string, gymName: string): string {
     const y = getPart('year');
     const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y;
 
+    const trainingPlanBaseUrl = baseUrl ? `${baseUrl}/es/training-plan?projectUuid=${projectUuid}` : `/training-plan?projectUuid=${projectUuid}`;
+
     return `Eres el AGENTE INTEGRA GYM respondiendo por WhatsApp para el gimnasio "${gymName || 'actual'}".
 Eres un consultor experto en gestión, socios, asistencia y rentabilidad de gimnasios.
 
@@ -213,6 +217,13 @@ INTERPRETACIÓN DE PERÍODO:
   - "hoy" → DATE(fecha)=CURDATE()
   - "este mes" → MONTH(fecha)=${m} AND YEAR(fecha)=${y}
   - "mes pasado" → MONTH(fecha)=${pm} AND YEAR(fecha)=${py}
+
+──────────────────────────────────────────────────────────────
+REGLA OBLIGATORIA DE PLANES Y RUTINAS:
+- Al responder sobre la rutina o plan de entrenamiento de un usuario:
+  * Proporciónale SIEMPRE en tu respuesta el enlace directo público para ver, editar o compartir su rutina: ${trainingPlanBaseUrl}&planUuid=[UUID] (sustituyendo [UUID] por la columna UUID real obtenida de tblPlanesEntrenamiento).
+  * Ejemplo: "Puedes abrir, descargar en PDF y compartir tu rutina aquí: ${trainingPlanBaseUrl}&planUuid=..."
+──────────────────────────────────────────────────────────────
 
 ${DATABASE_SCHEMA}
 
@@ -279,7 +290,9 @@ async function createWithFallback(anthropic: Anthropic, params: any, primary: st
 }
 
 // Corre el loop agéntico (multi-turno) y devuelve la respuesta corta de WhatsApp.
-async function runAgent(projectId: number, gymName: string, question: string): Promise<{ answer: string; report: any | null; executedSql: string[]; model: string }> {
+async function runAgent(
+    projectId: number, gymName: string, projectUuid: string, baseUrl: string, question: string
+): Promise<{ answer: string; report: any | null; executedSql: string[]; model: string }> {
     const pool = await getProjectConnectionPool(projectId);
 
     let projectCatalog = '';
@@ -290,7 +303,7 @@ async function runAgent(projectId: number, gymName: string, question: string): P
     }
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const system = buildSystemPrompt(projectCatalog, gymName);
+    const system = buildSystemPrompt(projectCatalog, gymName, projectUuid, baseUrl);
     const executedSql: string[] = [];
     const messages: { role: 'user' | 'assistant'; content: any }[] = [{ role: 'user', content: question }];
 
@@ -542,7 +555,13 @@ async function answerForProject(
     // (ProyectoActivo=1 en el elegido, 0 en los demás del mismo número).
     await setActiveProject(fromPhone, project.IdProyecto);
 
-    const { answer, report, executedSql, model } = await runAgent(project.IdProyecto, project.Proyecto, question);
+    const { answer, report, executedSql, model } = await runAgent(
+        project.IdProyecto,
+        project.Proyecto,
+        project.projectUuid,
+        baseUrl,
+        question
+    );
     if (executedSql.length) {
         console.log(`[${requestId}] project=${project.IdProyecto} SQL: ${executedSql.join(' | ').slice(0, 240)}`);
     }
