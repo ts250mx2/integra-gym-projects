@@ -81,6 +81,11 @@ tblVisitas: IdVisita, IdSocio, IdUsuario, IdSucursal, FechaVisita(datetime)
   • Visita de SOCIO/CLIENTE: asistencia de miembros al gimnasio (IdSocio > 0).
   • Frecuencia de asistencia = visitas de socios / socios activos en el período.
   • Horas/días pico: agrupa por HOUR(FechaVisita) o DAYOFWEEK(FechaVisita).
+  • REGLA DE BÚSQUEDA DE ASISTENCIA INDIVIDUAL: Al preguntar por la asistencia o accesos de una persona específica por su nombre (ej. "asistencia de Juan"):
+    1. Primero debes buscar a la persona en 'tblSocios'.
+    2. Si la encuentras en 'tblSocios', debes realizar la consulta de sus entradas/salidas en 'tblVisitas' relacionando por 'IdSocio'.
+    3. Si NO encuentras a la persona en 'tblSocios', debes buscarla en 'tblUsuarios' (usuarios/empleados).
+    4. Si la encuentras en 'tblUsuarios', debes realizar la consulta de su asistencia en 'tblAsistencias' relacionando por 'IdUsuario'.
 tblVisitasRecientes: feed reciente para el dashboard. Para análisis histórico usa tblVisitas.
 
 ───────────────────────────────────────────────────────────
@@ -88,7 +93,7 @@ ASISTENCIAS DE EMPLEADOS / PERSONAL (checada de entrada/salida)
 ───────────────────────────────────────────────────────────
 tblAsistencias: IdAsistencia, FechaAsistencia(datetime), IdUsuario, EsSalida(0=Entrada, 1=Salida),
                 IdSucursal, RechazoHuella, IdLector, FechaAct
-  • Asistencia de EMPLEADOS: checada de personal del staff (IdUsuario > 0).
+  • Asistencia de EMPLEADOS: checada de personal del staff (IdUsuario > 0). Relacionar por IdUsuario con tblUsuarios.
 
 ───────────────────────────────────────────────────────────
 CUOTAS / MEMBRESÍAS Y PRODUCTOS (catálogo unificado de productos)
