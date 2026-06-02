@@ -356,7 +356,7 @@ async function createWithFallback(anthropic: Anthropic, params: any, primary: st
 // Corre el loop agéntico (multi-turno) y devuelve la respuesta corta de WhatsApp.
 async function runAgent(
     projectId: number, gymName: string, projectUuid: string, baseUrl: string, question: string
-): Promise<{ answer: string; report: any | null; executedSql: string[]; model: string }> {
+): Promise<{ answer: string; report: any | null; autoReport: boolean; rowCount: number; executedSql: string[]; model: string }> {
     const pool = await getProjectConnectionPool(projectId);
 
     let projectCatalog = '';
@@ -398,14 +398,21 @@ async function runAgent(
     }
 
     const ex = extractReport(finalText);
-    // Si el modelo no emitió bloque report pero la última consulta devolvió una
-    // LISTA (varias filas), armamos la tabla automáticamente → siempre hay link.
-    const report = ex.report || buildFallbackReport(capture.lastRows);
-    return { answer: ex.clean.slice(0, ANSWER_CAP), report, executedSql, model: modelUsed };
+    // Si el modelo no emitió bloque report pero la última consulta devolvió
+    // REGISTROS CON VARIAS COLUMNAS, armamos la tabla automáticamente → liga directa.
+    let report = ex.report;
+    let autoReport = false;
+    let rowCount = 0;
+    if (!report) {
+        const fb = buildFallbackReport(capture.lastRows);
+        if (fb) { report = fb; autoReport = true; rowCount = Math.min(capture.lastRows.length, 200); }
+    }
+    return { answer: ex.clean.slice(0, ANSWER_CAP), report, autoReport, rowCount, executedSql, model: modelUsed };
 }
 
 // Arma un reporte de tabla a partir de las filas crudas de una consulta cuando el
 // modelo no generó el bloque report (respaldo para garantizar el link en listas).
+// Solo aplica si hay REGISTROS (≥2 filas) con VARIAS COLUMNAS (≥2).
 function buildFallbackReport(rows: any[]): any | null {
     if (!Array.isArray(rows) || rows.length < 2) return null;
     const sample = rows.slice(0, 200);
@@ -416,7 +423,7 @@ function buildFallbackReport(rows: any[]): any | null {
         const v = first[k];
         return !(v && typeof v === 'object' && !(v instanceof Date));
     });
-    if (cols.length < 1) return null;
+    if (cols.length < 2) return null;
     const sane = (v: any) => {
         if (v === null || v === undefined) return '';
         if (v instanceof Date) return v.toISOString().slice(0, 19).replace('T', ' ');
@@ -652,7 +659,7 @@ async function answerForProject(
     // (ProyectoActivo=1 en el elegido, 0 en los demás del mismo número).
     await setActiveProject(fromPhone, project.IdProyecto);
 
-    const { answer, report, executedSql, model } = await runAgent(
+    const { answer, report, autoReport, rowCount, executedSql, model } = await runAgent(
         project.IdProyecto,
         project.Proyecto,
         project.projectUuid,
@@ -665,7 +672,16 @@ async function answerForProject(
 
     // Si acaba de elegir gimnasio, prefijamos para dar contexto en el chat.
     const prefix = justSelected ? `📍 ${project.Proyecto}\n` : '';
-    let finalAnswer = (prefix + (answer || 'No pude generar una respuesta. ¿Puedes reformular tu pregunta?')).slice(0, ANSWER_CAP + 60);
+
+    // Si el resultado son REGISTROS CON VARIAS COLUMNAS (tabla armada automáticamente),
+    // mandamos la liga DIRECTO: texto corto (resumen del modelo si es breve, o un lead
+    // estándar) y dejamos que el detalle viva en la página, sin volcar la lista al chat.
+    let textPart = answer;
+    if (autoReport) {
+        const shortSummary = answer && answer.length <= 180 && !answer.includes('\n') ? answer : '';
+        textPart = shortSummary || `Encontré ${rowCount}${rowCount >= 200 ? '+' : ''} registros. Te dejo el detalle 👇`;
+    }
+    let finalAnswer = (prefix + (textPart || 'Aquí está el detalle.')).slice(0, ANSWER_CAP + 60);
 
     // Si el agente generó datos para visualizar, guardamos el reporte y agregamos el link.
     let reportUrl: string | null = null;
