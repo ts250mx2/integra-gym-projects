@@ -190,7 +190,18 @@ function buildSystemPrompt(projectCatalog: string, gymName: string): string {
     const now = new Date();
     const fecha = now.toLocaleString('es-MX', { timeZone: 'America/Monterrey', dateStyle: 'full', timeStyle: 'short' });
     const monthNames = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    const m = now.getMonth() + 1, y = now.getFullYear();
+
+    // Extraemos mes y año en zona horaria America/Monterrey para evitar desajustes de zona horaria (UTC)
+    const formatter = new Intl.DateTimeFormat('es-MX', {
+        timeZone: 'America/Monterrey',
+        year: 'numeric',
+        month: 'numeric',
+    });
+    const parts = formatter.formatToParts(now);
+    const getPart = (type: string) => Number(parts.find(p => p.type === type)?.value || 0);
+
+    const m = getPart('month');
+    const y = getPart('year');
     const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y;
 
     return `Eres el AGENTE INTEGRA GYM respondiendo por WhatsApp para el gimnasio "${gymName || 'actual'}".

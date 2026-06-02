@@ -118,13 +118,29 @@ CUÁNDO NO USARLA:
 // (volátil: saludo + fecha + contexto) cambia por request y no se cachea.
 function buildSystemPrompt(context: any, projectCatalog: string): Anthropic.TextBlockParam[] {
     const now = new Date();
-    const h   = now.getHours();
+    // Extraemos fecha y hora en zona horaria America/Monterrey para evitar desajustes de zona horaria (UTC)
+    const formatter = new Intl.DateTimeFormat('es-MX', {
+        timeZone: 'America/Monterrey',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+        hour12: false
+    });
+    const parts = formatter.formatToParts(now);
+    const getPart = (type: string) => Number(parts.find(p => p.type === type)?.value || 0);
+
+    const todayYear = getPart('year');
+    const todayMonth = getPart('month');
+    const todayDay = getPart('day');
+    const h = getPart('hour');
+
     const greeting = h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
 
     const monthNames = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
                         'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    const todayMonth = now.getMonth() + 1;
-    const todayYear  = now.getFullYear();
     const prevMonth  = todayMonth === 1 ? 12 : todayMonth - 1;
     const prevYear   = todayMonth === 1 ? todayYear - 1 : todayYear;
 
@@ -137,7 +153,7 @@ function buildSystemPrompt(context: any, projectCatalog: string): Anthropic.Text
 
     const periodBlock = `
 PERÍODO Y CONTEXTO — LEE ESTO PRIMERO ANTES DE CUALQUIER CONSULTA:
-  • HOY es ${now.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} (${now.toISOString().split('T')[0]})
+  • HOY es ${now.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Monterrey' })} (${todayYear}-${String(todayMonth).padStart(2, '0')}-${String(todayDay).padStart(2, '0')})
   • Mes en curso:  ${monthNames[todayMonth]} ${todayYear}
   • Mes anterior:  ${monthNames[prevMonth]} ${prevYear}
   • Sucursal activa (IdSucursal): ${branchId || '(todas / no seleccionada)'}${branchName ? ` — ${branchName}` : ''}
