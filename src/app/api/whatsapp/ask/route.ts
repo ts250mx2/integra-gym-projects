@@ -140,7 +140,7 @@ REGLAS:
 - CLIENTES/SOCIOS: tblSocios. ACTIVO = Status = 0 AND FechaVencimiento >= CURDATE(). El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (tiene mayor prioridad que su correo electrónico 'CorreoElectronico'). Al listar o consultar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' como contacto principal. Si pide consulta de Hombres/Mujeres, debes consultar el campo 'Sexo' en 'tblSocios', donde: 0 o 1 = Hombre, y 2 = Mujer.
 - VISITAS de socios: tblVisitas (FechaVisita). ASISTENCIAS de empleados: tblAsistencias (FechaAsistencia). Al preguntar por la asistencia de una persona específica por su nombre (ej. "asistencia de Juan"), busca primero en 'tblSocios'; si existe, consulta en 'tblVisitas' usando 'IdSocio'; si no existe en 'tblSocios', búscalo en 'tblUsuarios' (usuarios/empleados) y si existe ahí, consulta 'tblAsistencias' usando 'IdUsuario'.
 - PRODUCTOS/membresías: tblCuotas (TipoCuota=1 membresía, =2 producto).
-- PLANES Y RUTINAS: tblPlanesEntrenamiento. Si preguntan por su rutina o plan de entrenamiento, consulta 'tblPlanesEntrenamiento' y resume su plan o dale el enlace [Ver mi Plan de Entrenamiento](/training-plan?projectUuid=[projectUuid]&planUuid=[UUID]). Si piden diseñar una rutina en el chat, asume el rol de un Entrenador Personal de Élite y genérala directamente.
+- PLANES Y RUTINAS: tblPlanesEntrenamiento. Si preguntan por su rutina o plan de entrenamiento, consulta 'tblPlanesEntrenamiento' y resume su plan o dale el enlace a su página (formato: /wa-plan?projectUuid=[projectUuid]&planUuid=[UUID]). Si piden diseñar una rutina en el chat, asume el rol de un Entrenador Personal de Élite y genérala directamente.
 - Status=2 = cancelado/eliminado: filtra "Status <> 2".
 - Fechas DATETIME reales: usa DATE()/MONTH()/YEAR()/BETWEEN. MySQL: LIMIT obligatorio. Nunca TOP.
 - Puedes encadenar varias llamadas para explorar antes de responder.`,
@@ -183,7 +183,7 @@ async function executeQuery(pool: any, sql: string): Promise<any[]> {
     return rows as any[];
 }
 
-async function runToolBlocks(pool: any, content: any[], executedSql: string[]): Promise<any[]> {
+async function runToolBlocks(pool: any, content: any[], executedSql: string[], capture?: { lastRows: any[] }): Promise<any[]> {
     const toolResults: any[] = [];
     for (const block of content) {
         if (block.type !== 'tool_use') continue;
@@ -229,6 +229,9 @@ async function runToolBlocks(pool: any, content: any[], executedSql: string[]): 
         if (sql) executedSql.push(sql);
         try {
             const rows = await executeQuery(pool, sql);
+            // Guarda las filas de la última consulta con resultados (para armar
+            // automáticamente la tabla del reporte si el modelo no emite el bloque).
+            if (capture && Array.isArray(rows) && rows.length > 0) capture.lastRows = rows;
             const resultStr = JSON.stringify(rows);
             toolResults.push({
                 type: 'tool_result',
@@ -265,7 +268,7 @@ function buildSystemPrompt(projectCatalog: string, gymName: string, projectUuid:
     const y = getPart('year');
     const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y;
 
-    const trainingPlanBaseUrl = baseUrl ? `${baseUrl}/es/training-plan?projectUuid=${projectUuid}` : `/training-plan?projectUuid=${projectUuid}`;
+    const trainingPlanBaseUrl = baseUrl ? `${baseUrl}/es/wa-plan?projectUuid=${projectUuid}` : `/wa-plan?projectUuid=${projectUuid}`;
 
     return `Eres el AGENTE INTEGRA GYM respondiendo por WhatsApp para el gimnasio "${gymName || 'actual'}".
 Eres un consultor experto en gestión, socios, asistencia y rentabilidad de gimnasios.
@@ -371,6 +374,7 @@ async function runAgent(
     let finalText = '';
     let modelUsed = WA_MODEL;
     let turns = 0;
+    const capture = { lastRows: [] as any[] };
 
     while (turns < MAX_TURNS) {
         turns++;
@@ -389,12 +393,41 @@ async function runAgent(
         if (msg.stop_reason !== 'tool_use') break;
 
         messages.push({ role: 'assistant', content: msg.content });
-        const toolResults = await runToolBlocks(pool, msg.content, executedSql);
+        const toolResults = await runToolBlocks(pool, msg.content, executedSql, capture);
         messages.push({ role: 'user', content: toolResults });
     }
 
-    const { clean, report } = extractReport(finalText);
-    return { answer: clean.slice(0, ANSWER_CAP), report, executedSql, model: modelUsed };
+    const ex = extractReport(finalText);
+    // Si el modelo no emitió bloque report pero la última consulta devolvió una
+    // LISTA (varias filas), armamos la tabla automáticamente → siempre hay link.
+    const report = ex.report || buildFallbackReport(capture.lastRows);
+    return { answer: ex.clean.slice(0, ANSWER_CAP), report, executedSql, model: modelUsed };
+}
+
+// Arma un reporte de tabla a partir de las filas crudas de una consulta cuando el
+// modelo no generó el bloque report (respaldo para garantizar el link en listas).
+function buildFallbackReport(rows: any[]): any | null {
+    if (!Array.isArray(rows) || rows.length < 2) return null;
+    const sample = rows.slice(0, 200);
+    const first = sample[0];
+    if (!first || typeof first !== 'object') return null;
+    // Columnas útiles: descarta blobs/objetos (fotos, etc.); conserva fechas/números/texto.
+    const cols = Object.keys(first).filter(k => {
+        const v = first[k];
+        return !(v && typeof v === 'object' && !(v instanceof Date));
+    });
+    if (cols.length < 1) return null;
+    const sane = (v: any) => {
+        if (v === null || v === undefined) return '';
+        if (v instanceof Date) return v.toISOString().slice(0, 19).replace('T', ' ');
+        if (typeof v === 'object') return '';
+        return v;
+    };
+    return {
+        title: null,
+        tables: [{ columns: cols, rows: sample.map(r => cols.map(c => sane(r[c]))) }],
+        charts: [],
+    };
 }
 
 // Extrae el bloque ```report {json}``` del texto final: devuelve el texto limpio
@@ -454,13 +487,16 @@ async function saveReport(
     return uuid;
 }
 
-// Base URL pública para el link (env APP_PUBLIC_URL o derivada de headers del proxy).
+// Base URL pública para el link. Prioriza APP_PUBLIC_URL (la correcta de cara al
+// público). Si no está, deriva de los headers del proxy y, como último recurso,
+// del origin de la propia petición — así el link NUNCA queda vacío.
 function computeBaseUrl(req: Request): string {
     const env = (process.env.APP_PUBLIC_URL || '').trim().replace(/\/$/, '');
     if (env) return env;
     const proto = req.headers.get('x-forwarded-proto') || 'https';
     const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
-    return host ? `${proto}://${host}` : '';
+    if (host) return `${proto}://${host}`;
+    try { return new URL(req.url).origin; } catch { return ''; }
 }
 
 // Interpreta el mensaje como una selección del menú pendiente (número o nombre).

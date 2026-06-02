@@ -44,17 +44,28 @@ export async function POST(request: NextRequest) {
         - Minutos de entrenamiento diario: ${Minutos}
         - Observaciones/Objetivos: ${Observaciones}
 
-        El plan debe ser detallado, profesional y motivador. 
-        Incluye:
-        1. Una introducción personalizada y motivadora.
-        2. Distribución de ejercicios por día claramente estructurada.
-        3. Para cada ejercicio, especifica series, repeticiones y una **Referencia Gráfica**.
-           - La Referencia Gráfica debe ser un enlace directo a una imagen o video demostrativo (puedes usar enlaces de YouTube o Google Images) o una descripción técnica muy visual.
-           - Si usas enlaces, asegúrate de que sean descriptivos. Ejemplo: [Ver ejecución del ejercicio](enlace).
-        4. Recomendaciones de calentamiento y estiramiento.
-        5. Consejos adicionales basados en las observaciones.
+        El plan debe ser PROFESIONAL, motivador y MUY VISUAL (se renderiza en una página web).
+        Estructura EXACTA:
+        1. Una introducción breve y motivadora (1-2 frases).
+        2. UNA SECCIÓN POR DÍA. Cada día empieza con un encabezado nivel 2 con emoji del grupo muscular,
+           por ejemplo: "## 💪 Día 1 — Pecho y Tríceps".
+           Debajo de cada día, una TABLA Markdown con EXACTAMENTE estas columnas:
 
-        Formato: Devuelve el contenido en **Markdown** bien estructurado. Usa negritas para los nombres de los ejercicios y listas para las repeticiones.
+           | Ejercicio | Series × Reps | Descanso | Video |
+           |---|---|---|---|
+           | **Press de banca** | 4 × 10 | 90 s | [▶ Ver](https://www.youtube.com/results?search_query=press+de+banca+tecnica+ejecucion) |
+           | **Aperturas con mancuerna** | 3 × 12 | 60 s | [▶ Ver](https://www.youtube.com/results?search_query=aperturas+con+mancuerna+tecnica) |
+
+           REGLA CRÍTICA DEL LINK: la columna Video SIEMPRE es [▶ Ver](URL). En la URL, reemplaza
+           CADA espacio por el signo "+". NUNCA dejes espacios ni saltos dentro del enlace (rompería el clic).
+        3. "## 🔥 Calentamiento" — lista breve (3-4 puntos).
+        4. "## 🧘 Estiramiento" — lista breve (3-4 puntos).
+        5. "## 💡 Consejos" — 3-5 tips basados en sus objetivos (${Observaciones || 'mejora general'}).
+
+        FORMATO:
+        - Markdown puro, empieza directo con el contenido (sin bloque de código, sin \`\`\`).
+        - Cada día DEBE ir como tabla (no como lista de prosa). Nombres de ejercicio en **negritas**.
+        - Todos los enlaces en formato [texto](url) y SIN espacios dentro de la url.
         `;
 
         const completion = await openai.chat.completions.create({
