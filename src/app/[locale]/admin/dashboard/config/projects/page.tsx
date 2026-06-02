@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Save, X, Building2, Settings2, Search } from 'lucide-react';
-import { getCountries } from 'react-phone-number-input';
+import { getCountries, getCountryCallingCode } from 'react-phone-number-input';
 import { languages } from '@/i18n/locales';
 import Select, { components, SingleValueProps, OptionProps } from 'react-select';
 import CreatableSelect from 'react-select/creatable';
@@ -17,6 +17,21 @@ const countries = countryCodes.map(code => ({
     flagUrl: getFlagUrl(code)
 })).sort((a, b) => a.label.localeCompare(b.label));
 
+const dialCodes = countryCodes.map(code => {
+    try {
+        const callingCode = getCountryCallingCode(code);
+        return {
+            value: `+${callingCode}`,
+            code: code,
+            label: `+${callingCode} (${code})`,
+            flagUrl: getFlagUrl(code)
+        };
+    } catch (e) {
+        return null;
+    }
+}).filter((x): x is any => x !== null)
+  .sort((a, b) => a.value.localeCompare(b.value, undefined, { numeric: true }));
+
 const selectStyles = {
     control: (base: any) => ({ ...base, background: 'rgba(26, 26, 26, 0.8)', borderColor: 'rgba(255, 255, 255, 0.1)', padding: '2px', borderRadius: '8px', boxShadow: 'none', '&:hover': { borderColor: 'var(--neon-blue)' } }),
     menu: (base: any) => ({ ...base, background: '#1a1a1a', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px', zIndex: 100 }),
@@ -27,6 +42,25 @@ const selectStyles = {
 
 const CustomOption = (props: OptionProps<any>) => (<components.Option {...props}> <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}> <img src={props.data.flagUrl} alt={props.data.label} style={{ width: '20px', height: '14px', objectFit: 'cover', borderRadius: '2px' }} /> {props.data.label} </div> </components.Option>);
 const CustomSingleValue = (props: SingleValueProps<any>) => (<components.SingleValue {...props}> <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}> <img src={props.data.flagUrl} alt={props.data.label} style={{ width: '20px', height: '14px', objectFit: 'cover', borderRadius: '2px' }} /> {props.data.label} </div> </components.SingleValue>);
+
+const customDialOption = (props: OptionProps<any>) => (
+    <components.Option {...props}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <img src={props.data.flagUrl} alt={props.data.code} style={{ width: '18px', height: '12px', objectFit: 'cover', borderRadius: '1px' }} />
+            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{props.data.value}</span>
+            <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>({props.data.code})</span>
+        </div>
+    </components.Option>
+);
+
+const customDialSingleValue = (props: SingleValueProps<any>) => (
+    <components.SingleValue {...props}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <img src={props.data.flagUrl} alt={props.data.code} style={{ width: '18px', height: '12px', objectFit: 'cover', borderRadius: '1px' }} />
+            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{props.data.value}</span>
+        </div>
+    </components.SingleValue>
+);
 
 interface Project {
     IdProyecto: number;
@@ -48,6 +82,7 @@ export default function AdminProjectsPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [dbVersions, setDbVersions] = useState<{ Version: string }[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
     const [formData, setFormData] = useState({
         Proyecto: '',
         BaseDatos: '',
@@ -73,6 +108,144 @@ export default function AdminProjectsPage() {
     });
 
     const languageOptions = languages.map(l => ({ value: l.code, label: l.name }));
+
+    // Tab switching state
+    const [activeTab, setActiveTab] = useState<'general' | 'phones'>('general');
+
+    // Phones access state
+    const [selectedDialCode, setSelectedDialCode] = useState('+52');
+    const [phonesList, setPhonesList] = useState<any[]>([]);
+    const [phonesLoading, setPhonesLoading] = useState(false);
+    const [phoneFormData, setPhoneFormData] = useState({
+        IdProyectoTelefono: null as number | null,
+        Telefono: '',
+        Nombre: '',
+        EsAdministrador: false
+    });
+
+    const resetPhoneForm = () => {
+        setSelectedDialCode('+52');
+        setPhoneFormData({
+            IdProyectoTelefono: null,
+            Telefono: '',
+            Nombre: '',
+            EsAdministrador: false
+        });
+    };
+
+    const parseSavedPhone = (savedPhone: string) => {
+        const clean = (savedPhone || '').trim();
+        if (clean.startsWith('+')) {
+            const sortedCodes = [...dialCodes].sort((a, b) => b.value.length - a.value.length);
+            for (const item of sortedCodes) {
+                if (clean.startsWith(item.value)) {
+                    return {
+                        dialCode: item.value,
+                        localPhone: clean.slice(item.value.length)
+                    };
+                }
+            }
+        }
+        return {
+            dialCode: '+52',
+            localPhone: clean
+        };
+    };
+
+    const fetchPhones = async (idProyecto: number) => {
+        setPhonesLoading(true);
+        try {
+            const res = await fetch(`/api/admin/projects/phones?idProyecto=${idProyecto}`);
+            if (res.ok) {
+                const data = await res.json();
+                setPhonesList(data);
+            }
+        } catch (error) {
+            console.error('Error fetching phones:', error);
+        } finally {
+            setPhonesLoading(false);
+        }
+    };
+
+    const lookupPhone = async (phone: string) => {
+        const cleanPhone = phone.trim();
+        if (cleanPhone.length < 8) return;
+
+        const fullPhone = cleanPhone.startsWith('+') ? cleanPhone : `${selectedDialCode}${cleanPhone}`;
+
+        try {
+            const res = await fetch(`/api/admin/projects/phones?phone=${encodeURIComponent(fullPhone)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.found && data.Nombre) {
+                    setPhoneFormData(prev => ({ ...prev, Nombre: data.Nombre }));
+                }
+            }
+        } catch (error) {
+            console.error('Error looking up phone:', error);
+        }
+    };
+
+    const handleSavePhone = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingId) return;
+
+        const cleanPhone = phoneFormData.Telefono.trim();
+        const fullPhone = cleanPhone.startsWith('+') ? cleanPhone : `${selectedDialCode}${cleanPhone}`;
+
+        try {
+            const payload = {
+                IdProyecto: editingId,
+                ...phoneFormData,
+                Telefono: fullPhone
+            };
+
+            const res = await fetch('/api/admin/projects/phones', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                fetchPhones(editingId);
+                resetPhoneForm();
+            } else {
+                const errData = await res.json();
+                alert(errData.message || 'Error al guardar el teléfono');
+            }
+        } catch (error) {
+            console.error('Error saving phone:', error);
+        }
+    };
+
+    const handleDeletePhone = async (idProyectoTelefono: number) => {
+        if (!confirm('¿Estás seguro de que deseas retirar el acceso a este teléfono?')) return;
+
+        try {
+            const res = await fetch(`/api/admin/projects/phones?id=${idProyectoTelefono}`, {
+                method: 'DELETE'
+            });
+
+            if (res.ok && editingId) {
+                fetchPhones(editingId);
+            } else {
+                alert('Error al eliminar');
+            }
+        } catch (error) {
+            console.error('Error deleting phone:', error);
+        }
+    };
+
+    const handleEditPhone = (phone: any) => {
+        const { dialCode, localPhone } = parseSavedPhone(phone.Telefono || '');
+        setSelectedDialCode(dialCode);
+        setPhoneFormData({
+            IdProyectoTelefono: phone.IdProyectoTelefono,
+            Telefono: localPhone,
+            Nombre: phone.Nombre || '',
+            EsAdministrador: phone.EsAdministrador === 1
+        });
+    };
 
     useEffect(() => {
         fetchProjects();
@@ -130,6 +303,8 @@ export default function AdminProjectsPage() {
     };
 
     const handleOpenModal = (project?: Project) => {
+        setActiveTab('general');
+        resetPhoneForm();
         if (project) {
             setEditingId(project.IdProyecto);
             setFormData({
@@ -163,6 +338,8 @@ export default function AdminProjectsPage() {
     const handleCloseModal = () => {
         setIsModalOpen(false);
         setEditingId(null);
+        setActiveTab('general');
+        resetPhoneForm();
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -274,90 +451,132 @@ export default function AdminProjectsPage() {
         });
     };
 
+    // Filter projects based on searchQuery (Proyecto, BaseDatos, Servidor)
+    const filteredProjects = projects.filter(project => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) return true;
+        return (
+            (project.Proyecto || '').toLowerCase().includes(query) ||
+            (project.BaseDatos || '').toLowerCase().includes(query) ||
+            (project.Servidor || '').toLowerCase().includes(query)
+        );
+    });
+
+    const thStyle: React.CSSProperties = {
+        position: 'sticky',
+        top: 0,
+        backgroundColor: '#161616',
+        zIndex: 10,
+        padding: '0.75rem 0.8rem',
+        textAlign: 'left',
+        color: 'var(--text-secondary)',
+        fontWeight: 600,
+        borderBottom: '1px solid var(--glass-border)',
+        boxShadow: '0 1px 0 0 var(--glass-border)'
+    };
+
     return (
-        <div style={{ padding: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div className="icon-container" style={{ background: 'rgba(56, 189, 248, 0.1)', color: 'var(--neon-blue)', padding: '0.75rem', borderRadius: '12px' }}>
-                        <Building2 size={24} />
+        <div style={{ padding: '0.25rem 0' }}>
+            {/* Page Header with Integrated Search and Action Button */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', gap: '1.5rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div className="icon-container" style={{ background: 'rgba(56, 189, 248, 0.1)', color: 'var(--neon-blue)', padding: '0.6rem', borderRadius: '10px' }}>
+                        <Building2 size={20} />
                     </div>
                     <div>
-                        <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Proyectos</h1>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Administración global de proyectos y bases de datos</p>
+                        <h1 style={{ fontSize: '1.35rem', fontWeight: 'bold', lineHeight: '1.2' }}>Proyectos</h1>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Administración global y bases de datos</p>
                     </div>
                 </div>
-                <button className="btn-primary" onClick={() => handleOpenModal()} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Plus size={18} /> Nuevo Proyecto
-                </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: '1', justifyContent: 'flex-end', maxWidth: '650px' }}>
+                    <div style={{ position: 'relative', width: '100%', maxWidth: '350px' }}>
+                        <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                        <input
+                            type="text"
+                            placeholder="Buscar proyecto, base de datos o servidor..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="input-field"
+                            style={{ marginTop: 0, paddingLeft: '36px', paddingRight: '36px', background: 'rgba(26, 26, 26, 0.6)', borderColor: 'rgba(255, 255, 255, 0.1)', height: '38px', fontSize: '0.85rem', borderRadius: '6px' }}
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                    <button className="btn-primary" onClick={() => handleOpenModal()} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', height: '38px', padding: '0 1.25rem', fontSize: '0.85rem', borderRadius: '6px' }}>
+                        <Plus size={16} /> Nuevo Proyecto
+                    </button>
+                </div>
             </div>
 
-            <div className="glass-card" style={{ padding: '0' }}>
-                <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 280px)', overflowY: 'auto', position: 'relative' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
                         <thead>
-                            <tr style={{ borderBottom: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.02)' }}>
-                                <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>ID</th>
-                                <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>Proyecto</th>
-                                <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>Base de Datos</th>
-                                <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>Servidor</th>
-                                <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>Versión</th>
-                                <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>Dominio IM</th>
-                                <th style={{ padding: '1rem', textAlign: 'right', color: 'var(--text-secondary)', fontWeight: 600 }}>Acciones</th>
+                            <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+                                <th style={{ ...thStyle, width: '60px' }}>ID</th>
+                                <th style={thStyle}>Proyecto</th>
+                                <th style={thStyle}>Base de Datos</th>
+                                <th style={thStyle}>Servidor</th>
+                                <th style={{ ...thStyle, width: '110px' }}>Versión</th>
+                                <th style={{ ...thStyle, textAlign: 'right', width: '150px' }}>Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                    <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                                         Cargando...
                                     </td>
                                 </tr>
-                            ) : projects.length === 0 ? (
+                            ) : filteredProjects.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                        No hay proyectos registrados.
+                                    <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                        {projects.length === 0 ? 'No hay proyectos registrados.' : 'No se encontraron proyectos para tu búsqueda.'}
                                     </td>
                                 </tr>
                             ) : (
-                                projects.map((project) => (
+                                filteredProjects.map((project) => (
                                     <tr key={project.IdProyecto} style={{ borderBottom: '1px solid var(--glass-border)' }}>
-                                        <td style={{ padding: '1rem' }}>{project.IdProyecto}</td>
-                                        <td style={{ padding: '1rem', fontWeight: 500 }}>{project.Proyecto}</td>
-                                        <td style={{ padding: '1rem' }}>
-                                            <span style={{ fontFamily: 'monospace', background: 'rgba(0,0,0,0.3)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+                                        <td style={{ padding: '0.6rem 0.8rem', fontSize: '0.9rem' }}>{project.IdProyecto}</td>
+                                        <td style={{ padding: '0.6rem 0.8rem', fontSize: '0.9rem', fontWeight: 500 }}>{project.Proyecto}</td>
+                                        <td style={{ padding: '0.6rem 0.8rem' }}>
+                                            <span style={{ fontFamily: 'monospace', background: 'rgba(0,0,0,0.3)', padding: '0.2rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>
                                                 {project.BaseDatos}
                                             </span>
                                         </td>
-                                        <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>{project.Servidor || '-'}</td>
-                                        <td style={{ padding: '1rem' }}>
+                                        <td style={{ padding: '0.6rem 0.8rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{project.Servidor || '-'}</td>
+                                        <td style={{ padding: '0.6rem 0.8rem' }}>
                                             <span style={{ background: 'rgba(56, 189, 248, 0.1)', color: 'var(--neon-blue)', padding: '0.2rem 0.6rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 600 }}>
                                                 {project.Version || 'Sin versión'}
                                             </span>
                                         </td>
-                                        <td style={{ padding: '1rem' }}>{project.DominioIM || '-'}</td>
-                                        <td style={{ padding: '1rem', textAlign: 'right' }}>
-                                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                                        <td style={{ padding: '0.6rem 0.8rem', textAlign: 'right' }}>
+                                            <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
                                                 <button
                                                     onClick={() => handleOpenParams(project)}
-                                                    className="btn-secondary"
-                                                    style={{ padding: '0.5rem', color: 'var(--neon-green)' }}
-                                                    title="Parámetros"
+                                                    className="btn-action-green"
+                                                    title="Configurar Parámetros"
                                                 >
                                                     <Settings2 size={16} />
                                                 </button>
                                                 <button
                                                     onClick={() => handleOpenModal(project)}
-                                                    className="btn-secondary"
-                                                    style={{ padding: '0.5rem' }}
-                                                    title="Editar"
+                                                    className="btn-action-blue"
+                                                    title="Editar Proyecto"
                                                 >
                                                     <Edit2 size={16} />
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(project.IdProyecto)}
-                                                    className="btn-danger"
-                                                    style={{ padding: '0.5rem' }}
-                                                    title="Eliminar"
+                                                    className="btn-action-red"
+                                                    title="Eliminar Proyecto"
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -368,6 +587,26 @@ export default function AdminProjectsPage() {
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Footer showing total records */}
+                <div style={{ 
+                    padding: '1rem', 
+                    borderTop: '1px solid var(--glass-border)', 
+                    background: 'rgba(0,0,0,0.2)', 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    fontSize: '0.875rem',
+                    color: 'var(--text-secondary)'
+                }}>
+                    <div>
+                        {searchQuery.trim() ? (
+                            <span>Mostrando <strong>{filteredProjects.length}</strong> de <strong>{projects.length}</strong> proyectos filtrados</span>
+                        ) : (
+                            <span>Total: <strong>{projects.length}</strong> proyectos registrados</span>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -383,8 +622,8 @@ export default function AdminProjectsPage() {
                     justifyContent: 'center',
                     zIndex: 1000
                 }}>
-                    <div className="glass-card" style={{ width: '100%', maxWidth: '800px', padding: '2rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <div className="glass-card" style={{ width: '100%', maxWidth: '800px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                             <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
                                 {editingId ? 'Editar Proyecto' : 'Nuevo Proyecto'}
                             </h2>
@@ -393,138 +632,372 @@ export default function AdminProjectsPage() {
                             </button>
                         </div>
 
-                        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '1rem' }}>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Nombre del Proyecto *</label>
-                                    <input
-                                        type="text"
-                                        className="input-field"
-                                        value={formData.Proyecto}
-                                        onChange={(e) => setFormData({ ...formData, Proyecto: e.target.value })}
-                                        required
-                                        placeholder="Ej: Gym Power"
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Versión del Proyecto *</label>
-                                    <select
-                                        className="input-field"
-                                        value={formData.Version}
-                                        onChange={(e) => setFormData({ ...formData, Version: e.target.value })}
-                                        required
-                                    >
-                                        <option value="">Selecciona una versión</option>
-                                        {dbVersions.map((v, i) => (
-                                            <option key={i} value={v.Version}>{v.Version}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>País *</label>
-                                    <Select
-                                        options={countries}
-                                        styles={selectStyles}
-                                        components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
-                                        value={countries.find(c => c.value === formData.Pais)}
-                                        onChange={(opt: any) => setFormData({ ...formData, Pais: opt?.value || 'MX' })}
-                                        placeholder="Selecciona país"
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Idioma *</label>
-                                    <Select
-                                        options={languageOptions}
-                                        styles={selectStyles}
-                                        value={languageOptions.find(l => l.value === formData.Idioma)}
-                                        onChange={(opt: any) => setFormData({ ...formData, Idioma: opt?.value || 'es' })}
-                                        placeholder="Selecciona idioma"
-                                    />
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Base de Datos *</label>
-                                    <input
-                                        type="text"
-                                        className="input-field"
-                                        value={formData.BaseDatos}
-                                        onChange={(e) => setFormData({ ...formData, BaseDatos: e.target.value })}
-                                        required
-                                        disabled={!editingId && formData.Version === '2.0'}
-                                        style={!editingId && formData.Version === '2.0' ? { opacity: 0.7, cursor: 'not-allowed' } : {}}
-                                        placeholder="Ej: BDGymPower"
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                                        {formData.Version === '2.0' ? 'Dominio IM *' : 'Dominio IM (Opcional)'}
-                                    </label>
-                                    <input
-                                        type="text"
-                                        className="input-field"
-                                        value={formData.DominioIM}
-                                        onChange={(e) => setFormData({ ...formData, DominioIM: e.target.value })}
-                                        required={formData.Version === '2.0'}
-                                        placeholder="Ej: gympower"
-                                    />
-                                    <small style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
-                                        Prefijo para login tipo usuario@gympower.im
-                                    </small>
-                                </div>
-                            </div>
-
-                            <hr style={{ borderColor: 'var(--glass-border)', margin: '0.5rem 0' }} />
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Servidor (Host) *</label>
-                                    <input
-                                        type="text"
-                                        className="input-field"
-                                        value={formData.Servidor}
-                                        onChange={(e) => setFormData({ ...formData, Servidor: e.target.value })}
-                                        required
-                                        placeholder="Ej: 127.0.0.1 o localhost"
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Usuario de BD *</label>
-                                    <input
-                                        type="text"
-                                        className="input-field"
-                                        value={formData.UsuarioBD}
-                                        onChange={(e) => setFormData({ ...formData, UsuarioBD: e.target.value })}
-                                        required
-                                        placeholder="Ej: root"
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Contraseña de BD *</label>
-                                    <input
-                                        type="password"
-                                        className="input-field"
-                                        value={formData.PasswordBD}
-                                        onChange={(e) => setFormData({ ...formData, PasswordBD: e.target.value })}
-                                        required
-                                        placeholder="············"
-                                    />
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
-                                <button type="button" className="btn-secondary" onClick={handleCloseModal} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <X size={18} /> Cancelar
+                        {/* Modal Tabs Selector */}
+                        {editingId && (
+                            <div style={{ display: 'flex', borderBottom: '1px solid var(--glass-border)', marginBottom: '0.75rem', gap: '1rem' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab('general')}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        borderBottom: activeTab === 'general' ? '2px solid var(--neon-blue)' : '2px solid transparent',
+                                        color: activeTab === 'general' ? 'var(--neon-blue)' : 'var(--text-secondary)',
+                                        padding: '0.5rem 1rem',
+                                        cursor: 'pointer',
+                                        fontWeight: 600,
+                                        fontSize: '0.9rem',
+                                        transition: 'all 0.2s ease',
+                                        textShadow: activeTab === 'general' ? '0 0 8px rgba(0, 243, 255, 0.3)' : 'none'
+                                    }}
+                                >
+                                    Datos Generales
                                 </button>
-                                <button type="submit" className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <Save size={18} /> Guardar
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setActiveTab('phones');
+                                        fetchPhones(editingId);
+                                    }}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        borderBottom: activeTab === 'phones' ? '2px solid var(--neon-blue)' : '2px solid transparent',
+                                        color: activeTab === 'phones' ? 'var(--neon-blue)' : 'var(--text-secondary)',
+                                        padding: '0.5rem 1rem',
+                                        cursor: 'pointer',
+                                        fontWeight: 600,
+                                        fontSize: '0.9rem',
+                                        transition: 'all 0.2s ease',
+                                        textShadow: activeTab === 'phones' ? '0 0 8px rgba(0, 243, 255, 0.3)' : 'none'
+                                    }}
+                                >
+                                    Teléfonos con Acceso
                                 </button>
                             </div>
-                        </form>
+                        )}
+
+                        {/* Tab 1: Datos Generales */}
+                        {(activeTab === 'general' || !editingId) && (
+                            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '1rem' }}>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Nombre del Proyecto *</label>
+                                        <input
+                                            type="text"
+                                            className="input-field"
+                                            value={formData.Proyecto}
+                                            onChange={(e) => setFormData({ ...formData, Proyecto: e.target.value })}
+                                            required
+                                            placeholder="Ej: Gym Power"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Versión del Proyecto *</label>
+                                        <select
+                                            className="input-field"
+                                            value={formData.Version}
+                                            onChange={(e) => setFormData({ ...formData, Version: e.target.value })}
+                                            required
+                                        >
+                                            <option value="">Selecciona una versión</option>
+                                            {dbVersions.map((v, i) => (
+                                                <option key={i} value={v.Version}>{v.Version}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>País *</label>
+                                        <Select
+                                            options={countries}
+                                            styles={selectStyles}
+                                            components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
+                                            value={countries.find(c => c.value === formData.Pais)}
+                                            onChange={(opt: any) => setFormData({ ...formData, Pais: opt?.value || 'MX' })}
+                                            placeholder="Selecciona país"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Idioma *</label>
+                                        <Select
+                                            options={languageOptions}
+                                            styles={selectStyles}
+                                            value={languageOptions.find(l => l.value === formData.Idioma)}
+                                            onChange={(opt: any) => setFormData({ ...formData, Idioma: opt?.value || 'es' })}
+                                            placeholder="Selecciona idioma"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Base de Datos *</label>
+                                        <input
+                                            type="text"
+                                            className="input-field"
+                                            value={formData.BaseDatos}
+                                            onChange={(e) => setFormData({ ...formData, BaseDatos: e.target.value })}
+                                            required
+                                            disabled={!editingId && formData.Version === '2.0'}
+                                            style={!editingId && formData.Version === '2.0' ? { opacity: 0.7, cursor: 'not-allowed' } : {}}
+                                            placeholder="Ej: BDGymPower"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                                            {formData.Version === '2.0' ? 'Dominio IM *' : 'Dominio IM (Opcional)'}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            className="input-field"
+                                            value={formData.DominioIM}
+                                            onChange={(e) => setFormData({ ...formData, DominioIM: e.target.value })}
+                                            required={formData.Version === '2.0'}
+                                            placeholder="Ej: gympower"
+                                        />
+                                        <small style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                                            Prefijo para login tipo usuario@gympower.im
+                                        </small>
+                                    </div>
+                                </div>
+
+                                <hr style={{ borderColor: 'var(--glass-border)', margin: '0.5rem 0' }} />
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Servidor (Host) *</label>
+                                        <input
+                                            type="text"
+                                            className="input-field"
+                                            value={formData.Servidor}
+                                            onChange={(e) => setFormData({ ...formData, Servidor: e.target.value })}
+                                            required
+                                            placeholder="Ej: 127.0.0.1 o localhost"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Usuario de BD *</label>
+                                        <input
+                                            type="text"
+                                            className="input-field"
+                                            value={formData.UsuarioBD}
+                                            onChange={(e) => setFormData({ ...formData, UsuarioBD: e.target.value })}
+                                            required
+                                            placeholder="Ej: root"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Contraseña de BD *</label>
+                                        <input
+                                            type="password"
+                                            className="input-field"
+                                            value={formData.PasswordBD}
+                                            onChange={(e) => setFormData({ ...formData, PasswordBD: e.target.value })}
+                                            required
+                                            placeholder="············"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+                                    <button type="button" className="btn-secondary" onClick={handleCloseModal} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <X size={18} /> Cancelar
+                                    </button>
+                                    <button type="submit" className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <Save size={18} /> Guardar
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+
+                        {/* Tab 2: Teléfonos con Acceso */}
+                        {activeTab === 'phones' && editingId && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                {/* Phone Add/Edit Sub-Form */}
+                                <form onSubmit={handleSavePhone} className="glass-card" style={{ padding: '1rem', background: 'rgba(255, 255, 255, 0.02)', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderRadius: '12px' }}>
+                                    <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--neon-blue)' }}>
+                                        {phoneFormData.IdProyectoTelefono ? 'Editar Teléfono de Acceso' : 'Agregar Teléfono de Acceso'}
+                                    </h3>
+                                    
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '1rem', alignItems: 'flex-start' }}>
+                                        <div>
+                                            <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Teléfono *</label>
+                                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.4rem', alignItems: 'center' }}>
+                                                <div style={{ width: '125px' }}>
+                                                    <Select
+                                                        options={dialCodes}
+                                                        styles={selectStyles}
+                                                        components={{ Option: customDialOption, SingleValue: customDialSingleValue }}
+                                                        value={dialCodes.find(d => d.value === selectedDialCode)}
+                                                        onChange={(opt: any) => setSelectedDialCode(opt?.value || '+52')}
+                                                        placeholder="Lada"
+                                                    />
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    className="input-field"
+                                                    value={phoneFormData.Telefono}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setPhoneFormData(prev => ({ ...prev, Telefono: val }));
+                                                        if (val.length >= 10) {
+                                                            lookupPhone(val);
+                                                        }
+                                                    }}
+                                                    onBlur={() => {
+                                                        lookupPhone(phoneFormData.Telefono);
+                                                    }}
+                                                    required
+                                                    placeholder="Ej: 5512345678"
+                                                    style={{ marginTop: 0, height: '38px', fontSize: '0.85rem', flex: 1 }}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Nombre del Titular *</label>
+                                            <input
+                                                type="text"
+                                                className="input-field"
+                                                value={phoneFormData.Nombre}
+                                                onChange={(e) => setPhoneFormData({ ...phoneFormData, Nombre: e.target.value })}
+                                                required
+                                                placeholder="Ej: Juan Pérez"
+                                                style={{ marginTop: '0.4rem', height: '36px', fontSize: '0.85rem' }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginTop: '0.25rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '42px', height: '22px', cursor: 'pointer' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={phoneFormData.EsAdministrador}
+                                                    onChange={(e) => setPhoneFormData({ ...phoneFormData, EsAdministrador: e.target.checked })}
+                                                    style={{ opacity: 0, width: 0, height: 0 }}
+                                                />
+                                                <span style={{
+                                                    position: 'absolute',
+                                                    top: 0, left: 0, right: 0, bottom: 0,
+                                                    backgroundColor: phoneFormData.EsAdministrador ? 'rgba(0, 243, 255, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                                                    border: phoneFormData.EsAdministrador ? '1px solid var(--neon-blue)' : '1px solid var(--glass-border)',
+                                                    borderRadius: '22px',
+                                                    transition: '0.3s ease',
+                                                    boxShadow: phoneFormData.EsAdministrador ? '0 0 8px rgba(0, 243, 255, 0.4)' : 'none'
+                                                }}>
+                                                    <span style={{
+                                                        position: 'absolute',
+                                                        height: '14px', width: '14px',
+                                                        left: phoneFormData.EsAdministrador ? '22px' : '4px',
+                                                        bottom: '3px',
+                                                        backgroundColor: phoneFormData.EsAdministrador ? 'var(--neon-blue)' : 'var(--light-gray)',
+                                                        borderRadius: '50%',
+                                                        transition: '0.3s ease'
+                                                    }} />
+                                                </span>
+                                            </label>
+                                            <span style={{ fontSize: '0.825rem', fontWeight: 500, color: phoneFormData.EsAdministrador ? 'var(--neon-blue)' : 'var(--text-secondary)' }}>
+                                                ¿Es Administrador del Proyecto?
+                                            </span>
+                                        </div>
+
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            {phoneFormData.IdProyectoTelefono && (
+                                                <button
+                                                    type="button"
+                                                    className="btn-secondary"
+                                                    onClick={resetPhoneForm}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0 0.75rem', fontSize: '0.8rem', height: '32px', borderRadius: '6px' }}
+                                                >
+                                                    <X size={14} /> Cancelar
+                                                </button>
+                                            )}
+                                            <button
+                                                type="submit"
+                                                className="btn-primary"
+                                                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0 1rem', fontSize: '0.8rem', height: '32px', borderRadius: '6px' }}
+                                            >
+                                                <Save size={14} /> {phoneFormData.IdProyectoTelefono ? 'Guardar Cambios' : 'Agregar Teléfono'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+
+                                {/* Phones List Grid */}
+                                <div className="glass-card" style={{ padding: '0', overflow: 'hidden', borderRadius: '12px' }}>
+                                    <div style={{ overflowX: 'auto', maxHeight: '200px', overflowY: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                            <thead>
+                                                <tr style={{ background: 'rgba(255,255,255,0.01)', borderBottom: '1px solid var(--glass-border)' }}>
+                                                    <th style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'left', fontWeight: 600 }}>Teléfono</th>
+                                                    <th style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'left', fontWeight: 600 }}>Nombre del Titular</th>
+                                                    <th style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', width: '120px', fontWeight: 600 }}>Administrador</th>
+                                                    <th style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'right', width: '100px', fontWeight: 600 }}>Acciones</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {phonesLoading ? (
+                                                    <tr>
+                                                        <td colSpan={4} style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                                            Cargando teléfonos...
+                                                        </td>
+                                                    </tr>
+                                                ) : phonesList.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan={4} style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                                            No hay teléfonos asociados a este proyecto.
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    phonesList.map((p) => (
+                                                        <tr key={p.IdProyectoTelefono} style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                                                            <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', fontFamily: 'monospace' }}>{p.Telefono}</td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', fontWeight: 500 }}>{p.Nombre}</td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>
+                                                                {p.EsAdministrador === 1 ? (
+                                                                    <span style={{ background: 'rgba(0, 243, 255, 0.1)', color: 'var(--neon-blue)', padding: '0.15rem 0.5rem', borderRadius: '1rem', fontSize: '0.7rem', fontWeight: 600, border: '1px solid rgba(0, 243, 255, 0.2)' }}>
+                                                                        SÍ
+                                                                    </span>
+                                                                ) : (
+                                                                    <span style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--light-gray)', padding: '0.15rem 0.5rem', borderRadius: '1rem', fontSize: '0.7rem', fontWeight: 500 }}>
+                                                                        NO
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>
+                                                                <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleEditPhone(p)}
+                                                                        className="btn-action-blue"
+                                                                        style={{ padding: '0.35rem', borderRadius: '6px' }}
+                                                                        title="Editar"
+                                                                    >
+                                                                        <Edit2 size={12} />
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDeletePhone(p.IdProyectoTelefono)}
+                                                                        className="btn-action-red"
+                                                                        style={{ padding: '0.35rem', borderRadius: '6px' }}
+                                                                        title="Eliminar"
+                                                                    >
+                                                                        <Trash2 size={12} />
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

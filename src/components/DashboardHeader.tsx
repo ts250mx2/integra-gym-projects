@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { LogOut, Menu, Sun, Moon, Globe, RotateCcw } from 'lucide-react';
+import { LogOut, Menu, Sun, Moon, Globe, RotateCcw, Shield } from 'lucide-react';
 import { useRouter, usePathname } from '@/navigation';
 import { useLocale } from 'next-intl';
 import { languages } from '@/i18n/locales';
@@ -140,7 +140,7 @@ export default function DashboardHeader({ gymName, userName, branchName, positio
                             />
                         )}
                         {gymName}
-                        {projects.length > 1 && (
+                        {(projects.length > 1 || isAdmin === 1 || isAdmin === 2) && (
                             <button
                                 onClick={() => setShowProjectModal(true)}
                                 className="btn-secondary"
@@ -297,9 +297,40 @@ export default function DashboardHeader({ gymName, userName, branchName, positio
                                 </button>
                             ))}
                         </div>
+                        {(isAdmin === 1 || isAdmin === 2) && (
+                            <button
+                                onClick={() => {
+                                    setIsSwitching(true);
+                                    window.location.href = `/${locale}/admin/dashboard`;
+                                }}
+                                disabled={isSwitching}
+                                className="btn-primary"
+                                style={{
+                                    marginTop: '1.5rem',
+                                    width: '100%',
+                                    padding: '0.75rem 1.5rem',
+                                    fontWeight: '600',
+                                    textAlign: 'center',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.5rem',
+                                    cursor: 'pointer',
+                                    textTransform: 'uppercase',
+                                    fontSize: '0.85rem',
+                                    letterSpacing: '0.05em',
+                                    boxShadow: '0 0 15px rgba(0, 229, 255, 0.25)',
+                                    border: '1px solid var(--neon-blue)',
+                                    borderRadius: '6px'
+                                }}
+                            >
+                                <Shield size={16} />
+                                Administración de Proyectos
+                            </button>
+                        )}
                         <button
                             className="btn-secondary"
-                            style={{ marginTop: '2rem', width: '100%' }}
+                            style={{ marginTop: '1.5rem', width: '100%' }}
                             onClick={() => setShowProjectModal(false)}
                             disabled={isSwitching}
                         >

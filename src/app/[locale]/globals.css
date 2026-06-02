@@ -246,3 +246,61 @@ h4 {
 table tr:hover {
   background: rgba(255, 255, 255, 0.02);
 }
+
+/* Premium Neon Action Buttons */
+.btn-action-green {
+  background: rgba(57, 255, 20, 0.03);
+  border: 1px solid rgba(57, 255, 20, 0.15);
+  color: var(--neon-green);
+  padding: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-action-green:hover {
+  background: rgba(57, 255, 20, 0.15);
+  border-color: var(--neon-green);
+  box-shadow: 0 0 10px rgba(57, 255, 20, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-action-blue {
+  background: rgba(0, 243, 255, 0.03);
+  border: 1px solid rgba(0, 243, 255, 0.15);
+  color: var(--neon-blue);
+  padding: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-action-blue:hover {
+  background: rgba(0, 243, 255, 0.15);
+  border-color: var(--neon-blue);
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-action-red {
+  background: rgba(255, 77, 77, 0.03);
+  border: 1px solid rgba(255, 77, 77, 0.15);
+  color: #ff4d4d;
+  padding: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-action-red:hover {
+  background: rgba(255, 77, 77, 0.15);
+  border-color: #ff4d4d;
+  box-shadow: 0 0 10px rgba(255, 77, 77, 0.4);
+  transform: translateY(-1px);
+}
