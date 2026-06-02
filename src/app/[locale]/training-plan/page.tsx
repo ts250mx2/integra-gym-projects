@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface TrainingPlanData {
     Socio: string;
@@ -63,6 +65,9 @@ export default function TrainingPlanPage() {
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             setFormData(data);
+            if (data.PlanEntrenamiento) {
+                setGeneratedPlan(data.PlanEntrenamiento);
+            }
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -435,8 +440,10 @@ export default function TrainingPlanPage() {
                                             animate={{ opacity: 1, y: 0 }}
                                             className="prose prose-invert prose-indigo max-w-none"
                                         >
-                                            <div className="whitespace-pre-wrap text-slate-300 leading-relaxed font-light text-lg">
-                                                {generatedPlan}
+                                            <div className="markdown-content text-slate-300 leading-relaxed font-light text-lg">
+                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                    {generatedPlan}
+                                                </ReactMarkdown>
                                             </div>
                                         </motion.div>
                                     )}
@@ -491,6 +498,36 @@ export default function TrainingPlanPage() {
                 }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
                     background: rgba(255, 255, 255, 0.2);
+                }
+                .markdown-content a {
+                    color: #818cf8;
+                    text-decoration: underline;
+                    transition: opacity 0.2s;
+                }
+                .markdown-content a:hover {
+                    opacity: 0.8;
+                }
+                .markdown-content img {
+                    max-width: 100%;
+                    border-radius: 8px;
+                    margin: 1rem 0;
+                    border: 1px solid rgba(255,255,255,0.1);
+                }
+                .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+                    color: #818cf8;
+                    margin-top: 1.5rem;
+                    margin-bottom: 0.75rem;
+                    font-weight: 700;
+                }
+                .markdown-content ul, .markdown-content ol {
+                    margin-left: 1.5rem;
+                    margin-bottom: 1rem;
+                }
+                .markdown-content li {
+                    margin-bottom: 0.5rem;
+                }
+                .markdown-content p {
+                    margin-bottom: 1rem;
                 }
             `}</style>
         </div>

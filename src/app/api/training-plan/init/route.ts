@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
         // 2. Query the project database for the training plan record
         const planData = await projectQuery(
             project.IdProyecto,
-            'SELECT Socio, CodigoSocio, Genero, Edad, Peso, Estatura, Dias, Minutos, Observaciones FROM tblPlanesEntrenamiento WHERE UUID = ?',
+            'SELECT Socio, CodigoSocio, Genero, Edad, Peso, Estatura, Dias, Minutos, Observaciones, PlanEntrenamiento FROM tblPlanesEntrenamiento WHERE UUID = ?',
             [planUuid],
             project
         ) as any[];

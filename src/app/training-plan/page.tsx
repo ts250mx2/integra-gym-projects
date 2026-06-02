@@ -71,6 +71,9 @@ function TrainingPlanContent() {
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             setFormData(data);
+            if (data.PlanEntrenamiento) {
+                setGeneratedPlan(data.PlanEntrenamiento);
+            }
         } catch (err: any) {
             setError(err.message);
         } finally {
