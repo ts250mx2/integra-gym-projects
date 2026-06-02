@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import DashboardHeader from './DashboardHeader';
 import DashboardSidebarV1 from './DashboardSidebarV1';
+import AiAgent from './AiAgent';
 
 interface Props {
     session: any;
@@ -78,6 +79,7 @@ export default function DashboardShellV1({ session, children }: Props) {
                     </div>
                 </main>
             </div>
+            <AiAgent mode="floating" version={session.version} />
         </div>
     );
 }

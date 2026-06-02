@@ -51,7 +51,6 @@ export async function GET(req: NextRequest) {
             ventasMesData,
             visitasHoyData,
             sociosActivosData,
-            ventasPorMesData,
             ventasSemanaData,
             visitasSemanaData,
         ] =
@@ -89,22 +88,6 @@ export async function GET(req: NextRequest) {
                      FROM tblSocios
                      WHERE Status = 0
                        AND FechaVencimiento >= CURDATE()`,
-                    []
-                ) as Promise<any[]>,
-                projectQuery(
-                    projectId,
-                    `SELECT
-                        DATE_FORMAT(FechaMovimiento, '%Y-%m') AS mes,
-                        CONCAT(DATE_FORMAT(FechaMovimiento, '%M'), ' ', YEAR(FechaMovimiento)) AS mesNombre,
-                        YEAR(FechaMovimiento) AS anio,
-                        MONTH(FechaMovimiento) AS numMes,
-                        COALESCE(SUM(total), 0) AS total,
-                        COUNT(IdMovimiento) AS operaciones
-                     FROM tblMovimientos
-                     WHERE Status = 0
-                       AND FechaMovimiento >= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 11 MONTH)
-                     GROUP BY anio, numMes, mes, mesNombre
-                     ORDER BY anio ASC, numMes ASC`,
                     []
                 ) as Promise<any[]>,
                 projectQuery(
@@ -242,14 +225,6 @@ export async function GET(req: NextRequest) {
                 visitas: visitasSemanaTotal,
                 porDia: ventasPorDiaSemana,
             },
-            ventasPorMes: ventasPorMesData.map((r: any) => ({
-                mes: r.mes,
-                mesNombre: r.mesNombre,
-                anio: Number(r.anio),
-                numMes: Number(r.numMes),
-                total: Number(r.total) || 0,
-                operaciones: Number(r.operaciones) || 0,
-            })),
         });
     } catch (error: any) {
         console.error('[public/project-stats] error:', error);

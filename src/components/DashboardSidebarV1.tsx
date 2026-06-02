@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@/navigation';
 import {
     LayoutDashboard,
+    Brain,
 } from 'lucide-react';
 import packageJson from '../../package.json';
 
@@ -26,9 +27,14 @@ export default function DashboardSidebarV1({ isCollapsed }: Props) {
             minHeight: 'calc(100vh - 58px)',
             overflowX: 'hidden'
         }}>
-            <Link href="/dashboard-v1" className="sidebar-link" style={{ marginBottom: '1rem' }}>
+            <Link href="/dashboard-v1" className="sidebar-link" style={{ marginBottom: '0.5rem' }}>
                 <LayoutDashboard size={20} />
                 {!isCollapsed && <span style={{ fontWeight: '600' }}>{t('home')}</span>}
+            </Link>
+
+            <Link href="/dashboard-v1/ai-agent" className="sidebar-link" style={{ marginBottom: '1rem' }}>
+                <Brain size={20} />
+                {!isCollapsed && <span style={{ fontWeight: '600' }}>{t('aiAgent')}</span>}
             </Link>
 
             <div style={{

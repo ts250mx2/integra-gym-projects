@@ -52,3 +52,8 @@ debug_*.ts
 list_*.ts
 src/scripts/inspect_*.ts
 src/scripts/create_*.ts
+
+# Local agent and temp directories
+.claude/
+/tmp/
+
