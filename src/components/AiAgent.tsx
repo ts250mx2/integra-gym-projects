@@ -620,7 +620,7 @@ export default function AiAgent({ mode = 'floating', version }: AiAgentProps) {
     const sharedProps = {
         messages, isLoading, input, setInput, handleSend,
         model, setModel, onClear: handleClear, suggestions, messagesEndRef,
-        streamingText, streamPhase, onNavigate: handleNavigate, disableNav: isV1,
+        streamingText, streamPhase, onNavigate: handleNavigate, disableNav: false,
     };
 
     // ── EMBEDDED ──────────────────────────────────────────────────────────

@@ -234,15 +234,8 @@ CÓMO INTERPRETAR EL PERÍODO (con fechas reales — usa DATE/MONTH/YEAR):
 
     const ctxExtra = `Sucursal activa: ${branchId || 'todas'}${branchName ? ` (${branchName})` : ''} | Página: ${context?.currentPage || ''}`;
 
-    // Bloque de navegación. En v1.0 va VACÍO: el agente NO debe ofrecer bloques
-    // \`\`\`nav porque las pantallas del dashboard v2.0 no existen en esos proyectos.
-    const navBlock = isV1 ? `
-══════════════════════════════════════════
-NAVEGACIÓN
-══════════════════════════════════════════
-Este gimnasio usa una versión del sistema SIN las pantallas del dashboard nuevo.
-NO generes bloques \`\`\`nav ni sugieras abrir pantallas: responde solo con el análisis.
-` : `
+    // Bloque de navegación. El agente SIEMPRE puede sugerir pantallas del sistema a través de bloques ```nav.
+    const navBlock = `
 ══════════════════════════════════════════
 PANTALLAS DEL DASHBOARD (guiar al usuario)
 ══════════════════════════════════════════
@@ -253,7 +246,7 @@ Cuando al usuario le sirva ABRIR una pantalla del sistema, incluye al FINAL un b
 {"items":[{"label":"Ver socios","path":"/dashboard/sales/members","reason":"socios por vencer"}]}
 \`\`\`
 
-PANTALLAS DISPONIBLES (usa EXACTAMENTE estos paths, sin prefijo de idioma):
+PANTALLAS DISPONIBLES (usa EXACTAMENTE estos paths, sin prefijo de idioma, sustituyendo los parámetros reales si los tienes):
 - /dashboard — Resumen general (ventas, socios, visitas)
 - /dashboard/sales — Punto de venta (POS)
 - /dashboard/sales/members — Socios (alta, edición, vencimientos)
@@ -269,6 +262,8 @@ PANTALLAS DISPONIBLES (usa EXACTAMENTE estos paths, sin prefijo de idioma):
 - /dashboard/config/products — Productos
 - /dashboard/config/branches — Sucursales
 - /dashboard/config/payment-methods — Formas de pago
+- /training-plan?projectUuid=${projectUuid}&planUuid=[UUID] — Ver, Editar o Generar Plan de Entrenamiento (donde [UUID] es el UUID del plan)
+- /training-plan/share?projectUuid=${projectUuid}&planUuid=[UUID] — Compartir rutina con el Socio (Vista de solo lectura y descarga del plan del socio, donde [UUID] es el UUID del plan)
 
 REGLAS DE NAVEGACIÓN:
 - Úsalo SOLO cuando navegar aporte de verdad (no en cada respuesta).
@@ -397,8 +392,11 @@ REGLAS ADICIONALES:
   1. Busca primero en 'tblPlanesEntrenamiento' por 'Socio' o 'CodigoSocio'.
   2. Si NO existe el registro en 'tblPlanesEntrenamiento', ¡debes CREARLO usando la herramienta 'create_training_plan'! Primero busca al socio y sus datos básicos (nombre, código, sexo, edad) en 'tblSocios' para pasárselos a la herramienta.
   3. Una vez creado el plan (o si ya existía):
-     - Si tiene 'PlanEntrenamiento' con contenido, preséntale un resumen claro y el enlace [Ver, Editar e Imprimir mi Plan de Entrenamiento](${trainingPlanBaseUrl}&planUuid=[UUID]) (con el UUID real).
+     - Si tiene 'PlanEntrenamiento' con contenido, preséntale un resumen claro y proporciónale dos enlaces:
+       * Para edición/staff: [Ver, Editar e Imprimir mi Plan de Entrenamiento](${trainingPlanBaseUrl}&planUuid=[UUID]) (con el UUID real).
+       * Para compartir con el socio (solo lectura): [Compartir rutina con el Socio](${trainingPlanBaseUrl.replace('/training-plan', '/training-plan/share')}&planUuid=[UUID]).
      - Si está vacío, dile de forma entusiasta que tiene su perfil listo para generar su rutina y dale el enlace para que lo genere con un solo clic: [Ver, Editar e Imprimir mi Plan de Entrenamiento](${trainingPlanBaseUrl}&planUuid=[UUID]).
+     - Proporciona SIEMPRE un bloque de navegación \`\`\`nav al final de tu respuesta con dos botones de acción: uno para editar y otro para compartir con el socio (ej. {"items":[{"label":"Ver y Editar Plan","path":"/training-plan?projectUuid=${projectUuid}&planUuid=[UUID]","reason":"Ver o Editar"},{"label":"Compartir con Socio","path":"/training-plan/share?projectUuid=${projectUuid}&planUuid=[UUID]","reason":"Solo lectura"}]}).
   4. Si piden diseñar una rutina directamente en el chat, asume el rol de un Entrenador Personal de Élite y genérala con estructura completa.
 - Si ves muchos socios por vencer o asistencia cayendo, menciónalo con el dato y una acción.
 - Al comparar meses, SIEMPRE menciona los nombres (ej. "Mayo vs Abril").`;
