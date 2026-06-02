@@ -5,6 +5,7 @@ import { getProjectConnectionPool, getProjectByUUID } from '@/lib/projectDb';
 import { DATABASE_SCHEMA } from '@/lib/ai/schema';
 import { buildProjectCatalog } from '@/lib/ai/catalog';
 import { createSseStream, SSE_HEADERS } from '@/lib/ai/sse';
+import { query as globalQuery } from '@/lib/db';
 
 const MAX_TURNS = 12;
 
@@ -150,6 +151,10 @@ function buildSystemPrompt(context: any, projectCatalog: string): Anthropic.Text
     // En proyectos v1.0 NO existen las pantallas del dashboard v2.0: el agente no
     // debe sugerir navegación a ellas (los menús v2.0 no se abren en v1.0).
     const isV1       = String(context?.version ?? '') === '1.0';
+
+    const projectUuid = String(context?.projectUuid ?? '');
+    const baseUrl     = String(context?.baseUrl ?? '');
+    const trainingPlanBaseUrl = baseUrl ? `${baseUrl}/es/training-plan?projectUuid=${projectUuid}` : `/training-plan?projectUuid=${projectUuid}`;
 
     const periodBlock = `
 PERÍODO Y CONTEXTO — LEE ESTO PRIMERO ANTES DE CUALQUIER CONSULTA:
@@ -331,7 +336,7 @@ REGLAS ADICIONALES:
 - Para CLIENTES consulta siempre la tabla tblSocios. El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (vale más y es más importante que su correo). Al consultar o listar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' en tu SELECT. Si pide consulta de Hombres/Mujeres, debes consultar el campo 'Sexo' en 'tblSocios', donde: 0 o 1 = Hombre, y 2 = Mujer.
 - Para ASISTENCIAS de empleados usa la tabla tblAsistencias. Para visitas de socios usa tblVisitas. Al preguntar por la asistencia de una persona por su nombre (ej. "asistencia de Juan"), primero búscala en 'tblSocios' y si existe consulta en 'tblVisitas' usando 'IdSocio'; si no existe en 'tblSocios', búscala en 'tblUsuarios' y si existe ahí, consulta 'tblAsistencias' usando 'IdUsuario'.
 - Para PRODUCTOS usa tblCuotas (IdCuota es IdProducto, Cuota es Producto).
-- Para RUTINAS Y PLANES DE ENTRENAMIENTO: Si preguntan por su rutina registrada, consulta 'tblPlanesEntrenamiento' y proporciona un resumen con su enlace [Ver, Editar e Imprimir mi Plan de Entrenamiento](/training-plan?projectUuid=[projectUuid]&planUuid=[UUID]). Si piden que les hagas o diseñes una rutina en el chat, asume el rol de un Entrenador Personal de Élite y diséñala de forma profesional, detallada y estructurada día por día en el chat.
+- Para RUTINAS Y PLANES DE ENTRENAMIENTO: Si preguntan por su rutina registrada, consulta 'tblPlanesEntrenamiento' y proporciona un resumen con su enlace [Ver, Editar e Imprimir mi Plan de Entrenamiento](${trainingPlanBaseUrl}&planUuid=[UUID]) (sustituyendo [UUID] por el UUID real del plan encontrado). Si piden que les hagas o diseñes una rutina en el chat, asume el rol de un Entrenador Personal de Élite y diséñala de forma profesional, detallada y estructurada día por día en el chat.
 - Si ves muchos socios por vencer o asistencia cayendo, menciónalo con el dato y una acción.
 - Al comparar meses, SIEMPRE menciona los nombres (ej. "Mayo vs Abril").`;
 
@@ -387,7 +392,7 @@ async function createMessageWithFallback(
 
 // Resuelve el proyecto (gimnasio) de la sesión, o por projectId/projectUuid del body
 // (para el acceso al dashboard sin login). Devuelve el contexto base del gimnasio.
-async function resolveProject(body: any): Promise<{ projectId: number; gymName: string; branchId: any; branchName: string; version: string } | null> {
+async function resolveProject(body: any): Promise<{ projectId: number; gymName: string; branchId: any; branchName: string; version: string; projectUuid: string } | null> {
     // 1) Sesión autenticada (cookie httpOnly) — fuente principal.
     try {
         const cookieStore = await cookies();
@@ -395,12 +400,15 @@ async function resolveProject(body: any): Promise<{ projectId: number; gymName: 
         if (sessionCookie?.value) {
             const s = JSON.parse(sessionCookie.value);
             if (s?.projectId) {
+                const projRows = await globalQuery('SELECT UUID FROM tblProyectos WHERE IdProyecto = ?', [Number(s.projectId)]) as any[];
+                const projectUuid = projRows[0]?.UUID || '';
                 return {
                     projectId: Number(s.projectId),
                     gymName: s.gymName || '',
                     branchId: s.branchId ?? '',
                     branchName: s.branchName || '',
                     version: String(s.version ?? ''),
+                    projectUuid,
                 };
             }
         }
@@ -410,11 +418,16 @@ async function resolveProject(body: any): Promise<{ projectId: number; gymName: 
     if (body?.projectUuid) {
         try {
             const p = await getProjectByUUID(String(body.projectUuid));
-            return { projectId: p.IdProyecto, gymName: p.Proyecto || '', branchId: body?.context?.branchId ?? '', branchName: '', version: '' };
+            return { projectId: p.IdProyecto, gymName: p.Proyecto || '', branchId: body?.context?.branchId ?? '', branchName: '', version: '', projectUuid: String(body.projectUuid) };
         } catch { /* no encontrado */ }
     }
     if (body?.projectId) {
-        return { projectId: Number(body.projectId), gymName: '', branchId: body?.context?.branchId ?? '', branchName: '', version: '' };
+        try {
+            const projRows = await globalQuery('SELECT UUID, Proyecto FROM tblProyectos WHERE IdProyecto = ?', [Number(body.projectId)]) as any[];
+            const projectUuid = projRows[0]?.UUID || '';
+            const gymName = projRows[0]?.Proyecto || '';
+            return { projectId: Number(body.projectId), gymName, branchId: body?.context?.branchId ?? '', branchName: '', version: '', projectUuid };
+        } catch { /* no encontrado */ }
     }
     return null;
 }
@@ -451,12 +464,18 @@ export async function POST(req: Request) {
             console.error('No se pudo construir el catálogo del proyecto:', e);
         }
 
+                const proto = req.headers.get('x-forwarded-proto') || 'https';
+        const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+        const baseUrl = host ? `${proto}://${host}` : '';
+
         const mergedContext = {
             ...(context || {}),
             branchId:   context?.branchId   ?? project.branchId,
             branchName: context?.branchName ?? project.branchName,
             gymName:    context?.gymName    ?? project.gymName,
             version:    context?.version    ?? project.version,
+            projectUuid: project.projectUuid,
+            baseUrl,
         };
         const systemPrompt = buildSystemPrompt(mergedContext, projectCatalog);
         const executedSql: string[] = [];
