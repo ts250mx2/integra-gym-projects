@@ -59,7 +59,7 @@ const AGENT_TOOLS: any[] = [
         description: `Ejecuta SQL SELECT/WITH de solo lectura contra la BD MySQL del gimnasio.
 REGLAS OBLIGATORIAS:
 - VENTAS: Las ventas se obtienen exclusivamente de tblMovimientos (no de tblVentas). La fecha de venta es FechaMovimiento, el detalle de ventas es tblDetalleMovimientos y las formas de pago se obtienen de tblMovimientosPagos.
-- CLIENTES: Los clientes son los socios y se obtienen siempre de la tabla tblSocios.
+- CLIENTES: Los clientes son los socios y se obtienen siempre de la tabla tblSocios. Al listar o consultar socios que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' para poder mostrar sus teléfonos de contacto.
 - VISITAS: La tabla tblVisitas indica visitas/asistencias únicamente de socios/clientes (FechaVisita).
 - ASISTENCIAS: La tabla tblAsistencias indica las asistencias de empleados/personal (FechaAsistencia).
 - PRODUCTOS: La tabla tblCuotas indica los productos (membresías y artículos). IdCuota equivale a IdProducto, y Cuota es el nombre del Producto.
@@ -311,7 +311,7 @@ REGLAS ADICIONALES:
 - NUNCA digas "no tengo acceso a datos" sin antes intentar al menos una query.
 - Si hay sucursal activa (ver CONTEXTO), filtra SIEMPRE por su IdSucursal salvo que pidan "todas".
 - Para VENTAS usa SIEMPRE tblMovimientos (FechaMovimiento, tblDetalleMovimientos, tblMovimientosPagos).
-- Para CLIENTES consulta siempre la tabla tblSocios.
+- Para CLIENTES consulta siempre la tabla tblSocios. Al consultar o listar socios que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' en tu SELECT.
 - Para ASISTENCIAS de empleados usa la tabla tblAsistencias. Para visitas de socios usa tblVisitas.
 - Para PRODUCTOS usa tblCuotas (IdCuota es IdProducto, Cuota es Producto).
 - Si ves muchos socios por vencer o asistencia cayendo, menciónalo con el dato y una acción.

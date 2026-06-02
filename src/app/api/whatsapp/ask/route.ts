@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { v4 as uuidv4 } from 'uuid';
 import { query } from '@/lib/db';
 import { getProjectConnectionPool } from '@/lib/projectDb';
 import { DATABASE_SCHEMA } from '@/lib/ai/schema';
@@ -26,8 +27,7 @@ import { buildProjectCatalog } from '@/lib/ai/catalog';
  */
 
 const MAX_TURNS = 8;
-const SELECTED_TTL_MS = 30 * 60 * 1000; // gimnasio recordado 30 min
-const PENDING_TTL_MS  = 10 * 60 * 1000; // menú pendiente 10 min
+const PENDING_TTL_MS = 10 * 60 * 1000; // menú pendiente (en memoria) 10 min
 const ANSWER_CAP = 1500;
 
 // Modelo (configurable). Sonnet equilibra calidad de SQL y latencia.
@@ -46,17 +46,56 @@ interface PhoneProject {
     IdProyecto: number;
     Proyecto: string;
     Nombre: string | null;
+    ProyectoActivo: number; // 1 = es el proyecto activo de este teléfono
 }
 
-// ─── Sesión por número (en memoria; la app corre como servidor único) ──────────
+// ─── Menú pendiente por número (transitorio, en memoria) ───────────────────────
+// La SELECCIÓN ACTIVA se persiste en BD (tblProyectosTelefonos.ProyectoActivo).
 interface PendingChoice { question: string; options: PhoneProject[]; expires: number; }
-interface SelectedProject { projectId: number; projectName: string; expires: number; }
-const PENDING  = new Map<string, PendingChoice>();
-const SELECTED = new Map<string, SelectedProject>();
+const PENDING = new Map<string, PendingChoice>();
 
 // ─── Helpers de teléfono ───────────────────────────────────────────────────────
 const digits = (s: string) => (s || '').replace(/\D/g, '');
 const last10 = (s: string) => digits(s).slice(-10);
+
+// Normaliza la columna Telefono a sus últimos 10 dígitos (ignora lada/espacios/signos).
+const normPhoneSql = (col: string) =>
+    `RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col},' ',''),'-',''),'(',''),')',''),'+',''),'.','') , 10)`;
+
+// Asegura que exista la columna ProyectoActivo en tblProyectosTelefonos (lazy migration).
+let proyectoActivoEnsured = false;
+async function ensureProyectoActivoColumn(): Promise<void> {
+    if (proyectoActivoEnsured) return;
+    try {
+        const cols = await query("SHOW COLUMNS FROM tblProyectosTelefonos LIKE 'ProyectoActivo'") as any[];
+        if (!cols || cols.length === 0) {
+            await query('ALTER TABLE tblProyectosTelefonos ADD COLUMN ProyectoActivo TINYINT NOT NULL DEFAULT 0');
+        }
+        proyectoActivoEnsured = true;
+    } catch (e) {
+        console.error('[whatsapp/ask] no se pudo asegurar ProyectoActivo:', e);
+    }
+}
+
+// Marca el proyecto elegido como activo (=1) y los demás del mismo teléfono como inactivos (=0).
+async function setActiveProject(fromPhone: string, idProyecto: number): Promise<void> {
+    const tail = last10(fromPhone);
+    await query(
+        `UPDATE tblProyectosTelefonos
+         SET ProyectoActivo = CASE WHEN IdProyecto = ? THEN 1 ELSE 0 END
+         WHERE ${normPhoneSql('Telefono')} = ?`,
+        [idProyecto, tail]
+    );
+}
+
+// Limpia el proyecto activo del teléfono (para "cambiar de proyecto").
+async function clearActiveProject(fromPhone: string): Promise<void> {
+    const tail = last10(fromPhone);
+    await query(
+        `UPDATE tblProyectosTelefonos SET ProyectoActivo = 0 WHERE ${normPhoneSql('Telefono')} = ?`,
+        [tail]
+    );
+}
 
 // ─── Lookup de proyectos por número ────────────────────────────────────────────
 async function findProjectsForPhone(fromPhone: string): Promise<PhoneProject[]> {
@@ -64,10 +103,10 @@ async function findProjectsForPhone(fromPhone: string): Promise<PhoneProject[]> 
     if (tail.length < 8) return [];
     // Compara por los últimos 10 dígitos, ignorando lada/espacios/signos del registro.
     const rows = await query(
-        `SELECT t.IdProyecto, t.Nombre, p.Proyecto
+        `SELECT t.IdProyecto, t.Nombre, t.ProyectoActivo, p.Proyecto
          FROM tblProyectosTelefonos t
          JOIN tblProyectos p ON t.IdProyecto = p.IdProyecto
-         WHERE RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(t.Telefono,' ',''),'-',''),'(',''),')',''),'+',''),'.','') , 10) = ?
+         WHERE ${normPhoneSql('t.Telefono')} = ?
          ORDER BY p.Proyecto ASC`,
         [tail]
     ) as any[];
@@ -79,7 +118,12 @@ async function findProjectsForPhone(fromPhone: string): Promise<PhoneProject[]> 
         const id = Number(r.IdProyecto);
         if (seen.has(id)) continue;
         seen.add(id);
-        out.push({ IdProyecto: id, Proyecto: String(r.Proyecto || `Proyecto ${id}`), Nombre: r.Nombre ?? null });
+        out.push({
+            IdProyecto: id,
+            Proyecto: String(r.Proyecto || `Proyecto ${id}`),
+            Nombre: r.Nombre ?? null,
+            ProyectoActivo: Number(r.ProyectoActivo) || 0,
+        });
     }
     return out;
 }
@@ -91,7 +135,7 @@ const AGENT_TOOLS: any[] = [
         description: `Ejecuta SQL SELECT/WITH de solo lectura contra la BD MySQL del gimnasio.
 REGLAS:
 - VENTAS: exclusivamente tblMovimientos (fecha FechaMovimiento), detalle tblDetalleMovimientos, pagos tblMovimientosPagos. NUNCA tblVentas.
-- CLIENTES/SOCIOS: tblSocios. ACTIVO = Status = 0 AND FechaVencimiento >= CURDATE().
+- CLIENTES/SOCIOS: tblSocios. ACTIVO = Status = 0 AND FechaVencimiento >= CURDATE(). Al listar o consultar socios que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' para poder mostrar sus teléfonos de contacto.
 - VISITAS de socios: tblVisitas (FechaVisita). ASISTENCIAS de empleados: tblAsistencias (FechaAsistencia).
 - PRODUCTOS/membresías: tblCuotas (TipoCuota=1 membresía, =2 producto).
 - Status=2 = cancelado/eliminado: filtra "Status <> 2".
@@ -178,7 +222,28 @@ FORMATO WHATSAPP (obligatorio)
 - TEXTO PLANO: nada de markdown, tablas, viñetas con # o **. Emojis ligeros está bien.
 - Cifras en MXN con coma de miles ($14,820.00). Tutea, tono humano y directo.
 - Si hay una comparativa relevante (vs mes pasado) o algo accionable (socios por vencer, asistencia cayendo), méncionalo en una frase.
-- Responde SIEMPRE en español. Devuelve SOLO el texto de la respuesta, sin prefijos.`;
+- Responde SIEMPRE en español.
+
+──────────────────────────────────────────────────────────────
+VISUALIZACIÓN OPCIONAL (tabla/gráfica en una página web)
+──────────────────────────────────────────────────────────────
+Cuando la respuesta involucre datos que se aprecian mejor en TABLA o GRÁFICA
+(varias filas, ranking/top, desglose por sucursal/forma de pago/membresía,
+evolución por día o mes, comparativa de períodos), agrega AL FINAL del mensaje un
+bloque cercado \`\`\`report con un JSON en UNA sola línea con esta forma:
+
+\`\`\`report
+{"title":"Ventas por forma de pago (mayo 2026)","tables":[{"title":"Detalle","columns":["Forma de pago","Total","Tickets"],"rows":[["Efectivo",138200,210],["Tarjeta",61777,84]]}],"charts":[{"type":"bar","title":"Ventas por forma de pago","format":"currency","data":[{"name":"Efectivo","value":138200},{"name":"Tarjeta","value":61777}]}]}
+\`\`\`
+
+REGLAS DEL BLOQUE report:
+- El TEXTO de WhatsApp va ANTES del bloque y debe entenderse SOLO (resume el dato clave); el bloque es el detalle ampliado.
+- "charts": "type" bar|line|pie, "format" currency|number|percent, "data":[{"name","value","value2"?}], "seriesLabels"?:[..]. Máx ~12 puntos, valores crudos (sin $, comas ni %).
+- "tables": [{"title","columns":[...],"rows":[[...]]}]. Números crudos.
+- Incluye "tables", "charts" o ambos. Omite el bloque por completo para respuestas de un solo número, saludos o conceptos.
+- NO menciones el link ni el bloque en el texto; el sistema agrega el enlace automáticamente.
+
+Devuelve SOLO el texto (y, si aplica, el bloque \`\`\`report al final). Sin prefijos.`;
 }
 
 async function createWithFallback(anthropic: Anthropic, params: any, primary: string): Promise<{ msg: Anthropic.Message; model: string }> {
@@ -200,7 +265,7 @@ async function createWithFallback(anthropic: Anthropic, params: any, primary: st
 }
 
 // Corre el loop agéntico (multi-turno) y devuelve la respuesta corta de WhatsApp.
-async function runAgent(projectId: number, gymName: string, question: string): Promise<{ answer: string; executedSql: string[]; model: string }> {
+async function runAgent(projectId: number, gymName: string, question: string): Promise<{ answer: string; report: any | null; executedSql: string[]; model: string }> {
     const pool = await getProjectConnectionPool(projectId);
 
     let projectCatalog = '';
@@ -240,7 +305,74 @@ async function runAgent(projectId: number, gymName: string, question: string): P
         messages.push({ role: 'user', content: toolResults });
     }
 
-    return { answer: finalText.trim().slice(0, ANSWER_CAP), executedSql, model: modelUsed };
+    const { clean, report } = extractReport(finalText);
+    return { answer: clean.slice(0, ANSWER_CAP), report, executedSql, model: modelUsed };
+}
+
+// Extrae el bloque ```report {json}``` del texto final: devuelve el texto limpio
+// (para WhatsApp) y el reporte parseado (tablas/gráficas) si tiene contenido.
+function extractReport(text: string): { clean: string; report: any | null } {
+    let report: any = null;
+    let clean = text || '';
+    const m = clean.match(/```report\s*([\s\S]*?)```/i);
+    if (m) {
+        try { report = JSON.parse(m[1].trim()); } catch { report = null; }
+        clean = clean.replace(m[0], '').trim();
+    }
+    // Quita cualquier otro bloque cercado que se haya colado (no va en WhatsApp).
+    clean = clean.replace(/```[\s\S]*?```/g, '').trim();
+    // Sólo es válido si trae tablas o gráficas con contenido.
+    const hasTables = report && Array.isArray(report.tables) && report.tables.length > 0;
+    const hasCharts = report && Array.isArray(report.charts) && report.charts.length > 0;
+    if (!hasTables && !hasCharts) report = null;
+    return { clean, report };
+}
+
+// ─── Persistencia del reporte (BD principal, accesible por UUID) ────────────────
+let reportTableEnsured = false;
+async function ensureReportTable(): Promise<void> {
+    if (reportTableEnsured) return;
+    await query(`CREATE TABLE IF NOT EXISTS tblWhatsappReportes (
+        IdReporte INT NOT NULL AUTO_INCREMENT,
+        UUID CHAR(36) NOT NULL,
+        IdProyecto INT NOT NULL,
+        Telefono VARCHAR(30) NULL,
+        Pregunta TEXT NULL,
+        Respuesta TEXT NULL,
+        Titulo VARCHAR(255) NULL,
+        Datos LONGTEXT NULL,
+        FechaAct DATETIME NULL,
+        PRIMARY KEY (IdReporte),
+        KEY idx_uuid (UUID)
+    ) ENGINE=InnoDB DEFAULT CHARSET=latin1`);
+    reportTableEnsured = true;
+}
+
+async function saveReport(
+    project: PhoneProject, fromPhone: string, question: string, answer: string, report: any
+): Promise<string> {
+    await ensureReportTable();
+    const uuid = uuidv4();
+    const datos = JSON.stringify({
+        title: report?.title || null,
+        tables: Array.isArray(report?.tables) ? report.tables : [],
+        charts: Array.isArray(report?.charts) ? report.charts : [],
+    });
+    await query(
+        `INSERT INTO tblWhatsappReportes (UUID, IdProyecto, Telefono, Pregunta, Respuesta, Titulo, Datos, FechaAct)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [uuid, project.IdProyecto, last10(fromPhone), question.slice(0, 500), (answer || '').slice(0, 2000), String(report?.title || '').slice(0, 250), datos]
+    );
+    return uuid;
+}
+
+// Base URL pública para el link (env APP_PUBLIC_URL o derivada de headers del proxy).
+function computeBaseUrl(req: Request): string {
+    const env = (process.env.APP_PUBLIC_URL || '').trim().replace(/\/$/, '');
+    if (env) return env;
+    const proto = req.headers.get('x-forwarded-proto') || 'https';
+    const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+    return host ? `${proto}://${host}` : '';
 }
 
 // Interpreta el mensaje como una selección del menú pendiente (número o nombre).
@@ -295,11 +427,15 @@ export async function POST(req: Request) {
         if (question.length > 600) return NextResponse.json({ error: 'question demasiado larga (max 600)' }, { status: 400 });
 
         const phoneKey = last10(fromPhone);
+        const baseUrl = computeBaseUrl(req);
         console.log(`[${requestId}] whatsapp ask from=${fromPhone} q="${question.slice(0, 80)}"`);
 
-        // 3. Comando de reinicio de selección
+        // Asegura la columna ProyectoActivo (lazy migration) antes de leer/escribir.
+        await ensureProyectoActivoColumn();
+
+        // 3. Comando de reinicio de selección ("cambiar", "menu", reset:true)
         if (body.reset || isResetCmd(question)) {
-            SELECTED.delete(phoneKey);
+            await clearActiveProject(fromPhone);
             PENDING.delete(phoneKey);
         }
 
@@ -327,10 +463,18 @@ export async function POST(req: Request) {
             if (pend && pend.expires > Date.now()) {
                 const picked = resolveSelection(question, pend.options);
                 if (picked) {
-                    active = picked;
                     PENDING.delete(phoneKey);
+                    // Si el menú nació de un "cambiar" (sin pregunta real) solo confirmamos.
+                    if (!pend.question || isResetCmd(pend.question)) {
+                        await setActiveProject(fromPhone, picked.IdProyecto);
+                        return NextResponse.json({
+                            answer: `Listo, ahora consultas sobre ${picked.Proyecto}. ¿Qué quieres saber?`,
+                            project: { idProyecto: picked.IdProyecto, nombre: picked.Proyecto },
+                            meta: { request_id: requestId, from_phone: fromPhone, elapsed_ms: Date.now() - startTime },
+                        });
+                    }
                     // Respondemos la pregunta ORIGINAL que disparó el menú.
-                    return await answerForProject(picked, pend.question, fromPhone, requestId, startTime, true);
+                    return await answerForProject(picked, pend.question, fromPhone, requestId, startTime, true, baseUrl);
                 }
                 // No fue una selección válida → reenviar el menú con la nueva pregunta.
                 PENDING.set(phoneKey, { question, options: projects, expires: Date.now() + PENDING_TTL_MS });
@@ -343,12 +487,9 @@ export async function POST(req: Request) {
             }
         }
 
-        // 5c. Selección recordada (sticky) dentro del TTL
+        // 5c. Proyecto activo persistido en BD (ProyectoActivo = 1)
         if (!active) {
-            const sel = SELECTED.get(phoneKey);
-            if (sel && sel.expires > Date.now() && allowedIds.has(sel.projectId)) {
-                active = projects.find(p => p.IdProyecto === sel.projectId) || null;
-            }
+            active = projects.find(p => p.ProyectoActivo === 1) || null;
         }
 
         // 5d. Un solo proyecto → directo
@@ -368,7 +509,7 @@ export async function POST(req: Request) {
         }
 
         // 6. Responder sobre el proyecto activo
-        return await answerForProject(active, question, fromPhone, requestId, startTime, false);
+        return await answerForProject(active, question, fromPhone, requestId, startTime, false, baseUrl);
 
     } catch (e: any) {
         console.error(`[${requestId}] error:`, e);
@@ -381,29 +522,47 @@ export async function POST(req: Request) {
 
 async function answerForProject(
     project: PhoneProject, question: string, fromPhone: string,
-    requestId: string, startTime: number, justSelected: boolean
+    requestId: string, startTime: number, justSelected: boolean, baseUrl: string
 ): Promise<Response> {
-    const phoneKey = last10(fromPhone);
-    // Recordar la selección para siguientes preguntas del mismo número.
-    SELECTED.set(phoneKey, { projectId: project.IdProyecto, projectName: project.Proyecto, expires: Date.now() + SELECTED_TTL_MS });
+    // Persiste el proyecto elegido como activo de este teléfono en BD
+    // (ProyectoActivo=1 en el elegido, 0 en los demás del mismo número).
+    await setActiveProject(fromPhone, project.IdProyecto);
 
-    const { answer, executedSql, model } = await runAgent(project.IdProyecto, project.Proyecto, question);
+    const { answer, report, executedSql, model } = await runAgent(project.IdProyecto, project.Proyecto, question);
     if (executedSql.length) {
         console.log(`[${requestId}] project=${project.IdProyecto} SQL: ${executedSql.join(' | ').slice(0, 240)}`);
     }
 
     // Si acaba de elegir gimnasio, prefijamos para dar contexto en el chat.
     const prefix = justSelected ? `📍 ${project.Proyecto}\n` : '';
-    const finalAnswer = (prefix + (answer || 'No pude generar una respuesta. ¿Puedes reformular tu pregunta?')).slice(0, ANSWER_CAP + 60);
+    let finalAnswer = (prefix + (answer || 'No pude generar una respuesta. ¿Puedes reformular tu pregunta?')).slice(0, ANSWER_CAP + 60);
+
+    // Si el agente generó datos para visualizar, guardamos el reporte y agregamos el link.
+    let reportUrl: string | null = null;
+    if (report) {
+        try {
+            const uuid = await saveReport(project, fromPhone, question, answer, report);
+            if (baseUrl) {
+                reportUrl = `${baseUrl}/es/wa-report?r=${uuid}`;
+                finalAnswer += `\n\n📊 Ver gráfica y detalle: ${reportUrl}`;
+            } else {
+                console.warn(`[${requestId}] reporte ${uuid} guardado pero falta APP_PUBLIC_URL para el link`);
+            }
+        } catch (e) {
+            console.error(`[${requestId}] no se pudo guardar el reporte:`, e);
+        }
+    }
 
     return NextResponse.json({
         answer: finalAnswer,
         project: { idProyecto: project.IdProyecto, nombre: project.Proyecto },
+        reportUrl,
         meta: {
             request_id: requestId,
             from_phone: fromPhone,
             model_used: model,
             rows_queries: executedSql.length,
+            has_report: !!report,
             elapsed_ms: Date.now() - startTime,
         },
     });

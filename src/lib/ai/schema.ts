@@ -58,7 +58,7 @@ Las ventas del gimnasio se obtienen exclusivamente de la familia de tablas de mo
 SOCIOS / CLIENTES
 ───────────────────────────────────────────────────────────
 tblSocios: IdSocio, IdSucursal, Socio(nombre)/Nombres, CodigoSocio, CodigoBarras,
-           TarjetaRFID, Telefono, CorreoElectronico, Genero(1=H,2=M), Pais, Estado,
+           TarjetaRFID, Telefono, OtroTelefono, CorreoElectronico, Genero(1=H,2=M), Pais, Estado,
            Localidad, CodigoPostal, ContactoEmergencia, FechaAlta/FechaAct,
            FechaVencimiento(datetime — fin de su membresía), Status(0=activo,2=baja),
            ArchivoFoto, FotoActiva
@@ -67,6 +67,7 @@ tblSocios: IdSocio, IdSucursal, Socio(nombre)/Nombres, CodigoSocio, CodigoBarras
   • SOCIO/CLIENTE ACTIVO (membresía vigente): Status = 0 AND FechaVencimiento >= CURDATE().
   • SOCIO/CLIENTE VENCIDO: Status = 0 AND FechaVencimiento < CURDATE().
   • "Por vencer en N días": FechaVencimiento BETWEEN CURDATE() AND CURDATE()+INTERVAL N DAY.
+  • REGLA OBLIGATORIA DE TELÉFONOS: Al consultar, listar o reportar socios que vencen, por vencer o vencidos, la consulta SQL generada DEBE incluir SIEMPRE la columna 'OtroTelefono' (teléfono de contacto).
   • ALTAS/NUEVOS socios del período: filtra por su fecha de alta (FechaAlta o FechaAct).
   • La membresía se renueva al vender una cuota con TipoMembresia=1: la venta
     actualiza tblSocios.FechaVencimiento.
