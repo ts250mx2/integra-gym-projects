@@ -93,18 +93,6 @@ function mergeDbResults(sql: string, allResults: any[][], projects: any[]): any[
     const isAggregation = /sum\(|count\(|avg\(|group\s+by/i.test(lowerSql);
     const isExpiring = lowerSql.includes('tblsocios') && (lowerSql.includes('fecha_vencimiento') || lowerSql.includes('fechavencimiento'));
 
-    // Pre-process branch/gym names to prefix project name
-    flatRows.forEach(row => {
-        if (row.name !== undefined) {
-            row.name = `[${row._Proyecto}] ${row.name}`;
-        }
-        if (row.branch !== undefined) {
-            row.branch = `[${row._Proyecto}] ${row.branch}`;
-        }
-        if (row.Sucursal !== undefined) {
-            row.Sucursal = `[${row._Proyecto}] ${row.Sucursal}`;
-        }
-    });
 
     if (!isAggregation) {
         if (isExpiring) {
