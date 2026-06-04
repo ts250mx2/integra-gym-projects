@@ -76,6 +76,7 @@ interface BranchDetailRow {
     FormaPago: string;
     Total: number;
     Status: string;
+    Descripcion?: string;
 }
 
 interface SaleDetailRow {
@@ -244,6 +245,7 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
     const [branchModal, setBranchModal] = useState<{ isOpen: boolean; branchName: string; branchId: number | null; projectId: number | null; rows: BranchDetailRow[]; loading: boolean; }>(
         { isOpen: false, branchName: '', branchId: null, projectId: null, rows: [], loading: false }
     );
+    const [branchFilter, setBranchFilter] = useState('');
 
     // Sale Detail Modal state
     const [saleModal, setSaleModal] = useState<{ isOpen: boolean; folio: string; rows: SaleDetailRow[]; loading: boolean; }>(
@@ -252,6 +254,7 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
 
     const fetchBranchDetail = async (branchId: number, branchName: string, projectId?: number) => {
         setBranchModal({ isOpen: true, branchName, branchId, projectId: projectId || null, rows: [], loading: true });
+        setBranchFilter('');
         try {
             const res = await fetch(`/api/dashboard-v1/branch-detail?startDate=${startDate}&endDate=${endDate}&branchId=${branchId}${projectId ? `&projectId=${projectId}` : ''}`);
             const data = await res.json();
@@ -1660,37 +1663,92 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                         >
                             {/* Header */}
                             <div style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                padding: '1.25rem 1.5rem',
                                 borderBottom: '1px solid rgba(255,255,255,0.07)'
                             }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                    <Building2 size={22} color="var(--neon-blue)" />
-                                    <div>
-                                        <div style={{ fontSize: '0.6rem', color: 'var(--light-gray)', textTransform: 'uppercase', letterSpacing: '1px' }}>Detalle de Ventas</div>
-                                        <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'white' }}>{branchModal.branchName}</div>
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    padding: '1.25rem 1.5rem 0.85rem'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                        <Building2 size={22} color="var(--neon-blue)" />
+                                        <div>
+                                            <div style={{ fontSize: '0.6rem', color: 'var(--light-gray)', textTransform: 'uppercase', letterSpacing: '1px' }}>Detalle de Ventas</div>
+                                            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'white' }}>{branchModal.branchName}</div>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--light-gray)', backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.3rem 0.7rem', borderRadius: '6px' }}>
+                                            {startDate} → {endDate}
+                                        </span>
+                                        <button
+                                            onClick={() => setBranchModal(prev => ({ ...prev, isOpen: false }))}
+                                            style={{
+                                                background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
+                                                borderRadius: '8px', color: 'white', cursor: 'pointer',
+                                                width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                            }}
+                                        >
+                                            <X size={16} />
+                                        </button>
                                     </div>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                    <span style={{ fontSize: '0.7rem', color: 'var(--light-gray)', backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.3rem 0.7rem', borderRadius: '6px' }}>
-                                        {startDate} → {endDate}
-                                    </span>
-                                    <button
-                                        onClick={() => setBranchModal(prev => ({ ...prev, isOpen: false }))}
-                                        style={{
-                                            background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
-                                            borderRadius: '8px', color: 'white', cursor: 'pointer',
-                                            width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                        }}
-                                    >
-                                        <X size={16} />
-                                    </button>
+                                {/* Search filter */}
+                                <div style={{ padding: '0 1.5rem 1rem' }}>
+                                    <div style={{ position: 'relative' }}>
+                                        <span style={{
+                                            position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)',
+                                            fontSize: '0.85rem', color: 'var(--light-gray)', pointerEvents: 'none'
+                                        }}>🔍</span>
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar por folio, socio, código, forma de pago, descripción, total, fecha..."
+                                            value={branchFilter}
+                                            onChange={e => setBranchFilter(e.target.value)}
+                                            style={{
+                                                width: '100%', boxSizing: 'border-box',
+                                                padding: '0.55rem 0.85rem 0.55rem 2.2rem',
+                                                background: 'rgba(255,255,255,0.06)',
+                                                border: '1px solid rgba(255,255,255,0.12)',
+                                                borderRadius: '8px',
+                                                color: 'white', fontSize: '0.8rem',
+                                                outline: 'none',
+                                                transition: 'border-color 0.2s'
+                                            }}
+                                            onFocus={e => e.currentTarget.style.borderColor = 'rgba(0,243,255,0.4)'}
+                                            onBlur={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'}
+                                        />
+                                        {branchFilter && (
+                                            <button
+                                                onClick={() => setBranchFilter('')}
+                                                style={{
+                                                    position: 'absolute', right: '0.65rem', top: '50%', transform: 'translateY(-50%)',
+                                                    background: 'none', border: 'none', color: 'var(--light-gray)',
+                                                    cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem'
+                                                }}
+                                            >✕</button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Body */}
                             <div style={{ flex: 1, overflowY: 'auto' }}>
-                                {branchModal.loading ? (
+                                {(() => {
+                                    const filteredRows = branchFilter.trim()
+                                        ? branchModal.rows.filter(row => {
+                                            const q = branchFilter.toLowerCase();
+                                            const fechaStr = new Date(row.Fecha).toLocaleDateString('es-MX');
+                                            const totalStr = String(row.Total);
+                                            return [
+                                                row.Folio, row.Socio, row.Codigo,
+                                                row.FormaPago, row.Status,
+                                                fechaStr, totalStr,
+                                                row.Descripcion || ''
+                                            ].some(v => (v || '').toLowerCase().includes(q));
+                                        })
+                                        : branchModal.rows;
+                                    return (<>
+                                    {branchModal.loading ? (
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', gap: '0.75rem', color: 'var(--light-gray)' }}>
                                         <div style={{
                                             width: '24px', height: '24px', borderRadius: '50%',
@@ -1700,9 +1758,10 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                         }} />
                                         Cargando transacciones...
                                     </div>
-                                ) : branchModal.rows.length === 0 ? (
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: 'var(--light-gray)', opacity: 0.5 }}>
-                                        No hay transacciones para este periodo.
+                                ) : filteredRows.length === 0 ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: 'var(--light-gray)', opacity: 0.5, flexDirection: 'column', gap: '0.5rem' }}>
+                                        <span style={{ fontSize: '1.5rem' }}>🔍</span>
+                                        {branchModal.rows.length === 0 ? 'No hay transacciones para este periodo.' : `Sin resultados para "${branchFilter}"`}
                                     </div>
                                 ) : (
                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
@@ -1714,7 +1773,7 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {branchModal.rows.map((row, i) => {
+                                            {filteredRows.map((row, i) => {
                                                 const isCancelled = row.Status === 'CANCELADO';
                                                 return (
                                                     <tr
@@ -1829,42 +1888,53 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                         </tbody>
                                     </table>
                                 )}
+                                </>);
+                                })()}
                             </div>
 
                             {/* Footer */}
-                            {!branchModal.loading && branchModal.rows.length > 0 && (
-                                <div style={{
-                                    padding: '0.85rem 1.5rem',
-                                    borderTop: '1px solid rgba(255,255,255,0.07)',
-                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                    backgroundColor: 'rgba(255,255,255,0.02)'
-                                }}>
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--light-gray)' }}>
-                                        {branchModal.rows.length} transacciones &middot; {branchModal.rows.filter(r => r.Status === 'CANCELADO').length} canceladas
-                                    </span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                        <button
-                                            onClick={exportBranchDetailToExcel}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                                                padding: '0.45rem 1rem', borderRadius: '8px', cursor: 'pointer',
-                                                fontSize: '0.75rem', fontWeight: 'bold',
-                                                backgroundColor: 'rgba(57,255,20,0.1)',
-                                                color: 'var(--neon-green)',
-                                                border: '1px solid rgba(57,255,20,0.3)',
-                                                transition: 'all 0.2s ease'
-                                            }}
-                                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(57,255,20,0.2)')}
-                                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(57,255,20,0.1)')}
-                                        >
-                                            ⬇ Exportar Excel
-                                        </button>
-                                        <span style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--neon-green)' }}>
-                                            Total neto: {formatCurrency(branchModal.rows.filter(r => r.Status !== 'CANCELADO').reduce((acc, r) => acc + r.Total, 0))}
+                            {!branchModal.loading && branchModal.rows.length > 0 && (() => {
+                                const footerRows = branchFilter.trim()
+                                    ? branchModal.rows.filter(row => {
+                                        const q = branchFilter.toLowerCase();
+                                        const fechaStr = new Date(row.Fecha).toLocaleDateString('es-MX');
+                                        return [row.Folio, row.Socio, row.Codigo, row.FormaPago, row.Status, fechaStr, String(row.Total), row.Descripcion || ''].some(v => (v || '').toLowerCase().includes(q));
+                                    })
+                                    : branchModal.rows;
+                                return (
+                                    <div style={{
+                                        padding: '0.85rem 1.5rem',
+                                        borderTop: '1px solid rgba(255,255,255,0.07)',
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        backgroundColor: 'rgba(255,255,255,0.02)'
+                                    }}>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--light-gray)' }}>
+                                            {footerRows.length} transacciones{branchFilter ? ` (de ${branchModal.rows.length})` : ''} &middot; {footerRows.filter(r => r.Status === 'CANCELADO').length} canceladas
                                         </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                            <button
+                                                onClick={exportBranchDetailToExcel}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                                                    padding: '0.45rem 1rem', borderRadius: '8px', cursor: 'pointer',
+                                                    fontSize: '0.75rem', fontWeight: 'bold',
+                                                    backgroundColor: 'rgba(57,255,20,0.1)',
+                                                    color: 'var(--neon-green)',
+                                                    border: '1px solid rgba(57,255,20,0.3)',
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                                onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(57,255,20,0.2)')}
+                                                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(57,255,20,0.1)')}
+                                            >
+                                                ⬇ Exportar Excel
+                                            </button>
+                                            <span style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--neon-green)' }}>
+                                                Total neto: {formatCurrency(footerRows.filter(r => r.Status !== 'CANCELADO').reduce((acc, r) => acc + r.Total, 0))}
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                );
+                            })()}
                         </div>
                     </div>
                 )
