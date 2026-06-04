@@ -60,6 +60,8 @@ export default function DashboardShellV1({ session, children }: Props) {
                 logo={logo}
                 currentTheme={theme}
                 onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                projectId={session.projectId}
+                proyectoIntegrados={session.proyectoIntegrados}
             />
             <div style={{ display: 'flex' }}>
                 <DashboardSidebarV1 isCollapsed={isSidebarCollapsed} />
@@ -79,7 +81,7 @@ export default function DashboardShellV1({ session, children }: Props) {
                     </div>
                 </main>
             </div>
-            <AiAgent mode="floating" version={session.version} />
+            <AiAgent mode="floating" version={session.version} userId={session.userId} projectId={session.projectId} />
         </div>
     );
 }

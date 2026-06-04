@@ -57,13 +57,14 @@ Las ventas del gimnasio se obtienen exclusivamente de la familia de tablas de mo
 ───────────────────────────────────────────────────────────
 SOCIOS / CLIENTES
 ───────────────────────────────────────────────────────────
-tblSocios: IdSocio, IdSucursal, Socio(nombre)/Nombres, CodigoSocio, CodigoBarras,
+tblSocios: IdSocio, IdSucursal, Socio(nombre)/Nombres, CodigoSocio, CodigoBarras (donde se almacena realmente el CodigoSocio),
            TarjetaRFID, Telefono, OtroTelefono, CorreoElectronico, Sexo(0,1=Hombre, 2=Mujer), Pais, Estado,
            Localidad, CodigoPostal, ContactoEmergencia, FechaAlta/FechaAct,
            FechaVencimiento(datetime — fin de su membresía), Status(0=activo,2=baja),
            ArchivoFoto, FotoActiva
   • NOTA CLAVE: Los CLIENTES del gimnasio son los socios. Si te preguntan por clientes o socios,
     debes consultar siempre en tblSocios.
+  • CÓDIGO DE SOCIO: El código del socio (CodigoSocio) se almacena y consulta físicamente en el campo 'CodigoBarras'. En tus consultas SQL a tblSocios, usa siempre 'CodigoBarras' para referirte al código del socio o buscar por el mismo.
   • SOCIO/CLIENTE ACTIVO (membresía vigente): Status = 0 AND FechaVencimiento >= CURDATE().
   • SOCIO/CLIENTE VENCIDO: Status = 0 AND FechaVencimiento < CURDATE().
   • "Por vencer en N días": FechaVencimiento BETWEEN CURDATE() AND CURDATE()+INTERVAL N DAY.

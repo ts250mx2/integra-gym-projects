@@ -59,7 +59,8 @@ export async function POST(req: NextRequest) {
             positionId: sessionData.positionId || 0,
             position: sessionData.position || 'Usuario',
             isAdmin: sessionData.isAdmin,
-            version: project.Version || '1.0'
+            version: project.Version || '1.0',
+            proyectoIntegrados: sessionData.proyectoIntegrados || 0
         };
 
         // If V2, sync schema

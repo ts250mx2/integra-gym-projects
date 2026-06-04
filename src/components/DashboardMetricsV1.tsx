@@ -891,49 +891,102 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
 
                                 <div style={{ width: '100%', height: '350px' }}>
                                     {metrics.activeMembersHistory.length > 0 ? (
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={metrics.activeMembersHistory} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                                <XAxis
-                                                    dataKey="label"
-                                                    stroke="var(--light-gray)"
-                                                    fontSize={10}
-                                                    tick={{ fill: 'var(--light-gray)' }}
-                                                    interval={6}
-                                                />
-                                                <YAxis
-                                                    stroke="var(--light-gray)"
-                                                    fontSize={10}
-                                                    tick={{ fill: 'var(--light-gray)' }}
-                                                    domain={['auto', 'auto']}
-                                                />
-                                                <Tooltip
-                                                    contentStyle={{
-                                                        backgroundColor: 'rgba(10, 10, 15, 0.95)',
-                                                        border: '1px solid rgba(0, 243, 255, 0.2)',
-                                                        borderRadius: '8px',
-                                                        fontSize: '0.8rem'
-                                                    }}
-                                                    formatter={(value: any) => [value, 'Socios Activos']}
-                                                    labelStyle={{ color: 'var(--neon-blue)', fontWeight: 'bold', marginBottom: '4px' }}
-                                                />
-                                                <Line
-                                                    type="monotone"
-                                                    dataKey="count"
-                                                    stroke="var(--neon-blue)"
-                                                    strokeWidth={3}
-                                                    dot={(props: any) => {
-                                                        const { cx, cy, payload } = props;
-                                                        const today = getTodayStr();
-                                                        if (payload.date === today) {
-                                                            return <circle key={payload.date} cx={cx} cy={cy} r={6} fill="white" stroke="var(--neon-blue)" strokeWidth={2} />;
-                                                        }
-                                                        return null;
-                                                    }}
-                                                    activeDot={{ r: 8, strokeWidth: 0 }}
-                                                />
-                                            </LineChart>
-                                        </ResponsiveContainer>
+                                        (() => {
+                                            const firstHistoryItem = metrics.activeMembersHistory[0];
+                                            const branchKeys = firstHistoryItem
+                                                ? Object.keys(firstHistoryItem).filter(k => k !== 'date' && k !== 'label' && k !== 'count')
+                                                : [];
+                                            const BRANCH_COLORS = [
+                                                'var(--neon-blue)',
+                                                'var(--neon-purple)',
+                                                'var(--neon-green)',
+                                                '#ff4d4d',
+                                                '#ffb700',
+                                                '#ff007f',
+                                                '#00ffcc',
+                                                '#ffff00'
+                                            ];
+
+                                            return (
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <LineChart data={metrics.activeMembersHistory} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                                        <XAxis
+                                                            dataKey="label"
+                                                            stroke="var(--light-gray)"
+                                                            fontSize={10}
+                                                            tick={{ fill: 'var(--light-gray)' }}
+                                                            interval={6}
+                                                        />
+                                                        <YAxis
+                                                            stroke="var(--light-gray)"
+                                                            fontSize={10}
+                                                            tick={{ fill: 'var(--light-gray)' }}
+                                                            domain={['auto', 'auto']}
+                                                        />
+                                                        <Tooltip
+                                                            contentStyle={{
+                                                                backgroundColor: 'rgba(10, 10, 15, 0.95)',
+                                                                border: '1px solid rgba(0, 243, 255, 0.2)',
+                                                                borderRadius: '8px',
+                                                                fontSize: '0.8rem'
+                                                            }}
+                                                            formatter={(value: any, name?: any) => [value, name === 'count' ? 'Total' : String(name || '')]}
+                                                            labelStyle={{ color: 'var(--neon-blue)', fontWeight: 'bold', marginBottom: '4px' }}
+                                                        />
+                                                        <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
+                                                        {branchKeys.map((branch, idx) => (
+                                                            <Line
+                                                                key={branch}
+                                                                type="monotone"
+                                                                dataKey={branch}
+                                                                name={branch}
+                                                                stroke={BRANCH_COLORS[idx % BRANCH_COLORS.length]}
+                                                                strokeWidth={2}
+                                                                dot={(props: any) => {
+                                                                    const { cx, cy, payload } = props;
+                                                                    const today = getTodayStr();
+                                                                    if (payload.date === today) {
+                                                                        return (
+                                                                            <circle 
+                                                                                key={`${branch}-${payload.date}`} 
+                                                                                cx={cx} 
+                                                                                cy={cy} 
+                                                                                r={4} 
+                                                                                fill="white" 
+                                                                                stroke={BRANCH_COLORS[idx % BRANCH_COLORS.length]} 
+                                                                                strokeWidth={2} 
+                                                                            />
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                }}
+                                                                activeDot={{ r: 6 }}
+                                                            />
+                                                        ))}
+                                                        {(branchKeys.length > 1 || branchKeys.length === 0) && (
+                                                            <Line
+                                                                type="monotone"
+                                                                dataKey="count"
+                                                                name="Total"
+                                                                stroke="rgba(255, 255, 255, 0.6)"
+                                                                strokeDasharray="4 4"
+                                                                strokeWidth={2.5}
+                                                                dot={(props: any) => {
+                                                                    const { cx, cy, payload } = props;
+                                                                    const today = getTodayStr();
+                                                                    if (payload.date === today) {
+                                                                        return <circle key={`total-${payload.date}`} cx={cx} cy={cy} r={5} fill="white" stroke="rgba(255, 255, 255, 0.8)" strokeWidth={2} />;
+                                                                    }
+                                                                    return null;
+                                                                }}
+                                                                activeDot={{ r: 7 }}
+                                                            />
+                                                        )}
+                                                    </LineChart>
+                                                </ResponsiveContainer>
+                                            );
+                                        })()
                                     ) : (
                                         <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--light-gray)', opacity: 0.5 }}>
                                             No hay datos disponibles para este periodo. (Puntos: {metrics.activeMembersHistory.length})

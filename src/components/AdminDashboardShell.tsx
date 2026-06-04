@@ -59,6 +59,8 @@ export default function AdminDashboardShell({ session, children }: Props) {
                 logo={logo}
                 currentTheme={theme}
                 onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                projectId={session.projectId}
+                proyectoIntegrados={session.proyectoIntegrados}
             />
             <div style={{ display: 'flex' }}>
                 <AdminDashboardSidebar isCollapsed={isSidebarCollapsed} />

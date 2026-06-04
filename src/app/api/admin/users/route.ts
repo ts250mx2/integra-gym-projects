@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
         const session = await verifyAdminSession();
         if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-        const users = await query('SELECT IdUsuario, Usuario, CorreoElectronico, Telefono, Status, EsAdmin FROM tblUsuarios WHERE Status = 0 ORDER BY Usuario ASC', []);
+        const users = await query('SELECT IdUsuario, Usuario, CorreoElectronico, Telefono, Status, EsAdmin, ProyectoIntegrados FROM tblUsuarios WHERE Status = 0 ORDER BY Usuario ASC', []);
         return NextResponse.json(users);
     } catch (error: any) {
         console.error('Users GET API error:', error);
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
         if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
         const body = await req.json();
-        const { Usuario, CorreoElectronico, Telefono, passwd, EsAdmin } = body;
+        const { Usuario, CorreoElectronico, Telefono, passwd, EsAdmin, ProyectoIntegrados } = body;
 
         if (!Usuario || !CorreoElectronico || !passwd) {
             return NextResponse.json({ error: 'missingFields' }, { status: 400 });
@@ -43,13 +43,14 @@ export async function POST(req: NextRequest) {
 
         // Since we are dealing with admin users, hardcode EsAdmin if not provided
         const adminLevel = EsAdmin ?? 1;
+        const projectIntegrated = ProyectoIntegrados ? 1 : 0;
         const currentDatetime = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
         const insertQuery = `
-            INSERT INTO tblUsuarios (Usuario, CorreoElectronico, Telefono, passwd, Status, EsAdmin, FechaAct) 
-            VALUES (?, ?, ?, ?, 0, ?, ?)
+            INSERT INTO tblUsuarios (Usuario, CorreoElectronico, Telefono, passwd, Status, EsAdmin, ProyectoIntegrados, FechaAct) 
+            VALUES (?, ?, ?, ?, 0, ?, ?, ?)
         `;
-        const result: any = await query(insertQuery, [Usuario, CorreoElectronico, Telefono || '', passwd, adminLevel, currentDatetime]);
+        const result: any = await query(insertQuery, [Usuario, CorreoElectronico, Telefono || '', passwd, adminLevel, projectIntegrated, currentDatetime]);
 
         return NextResponse.json({ success: true, insertId: result.insertId });
     } catch (error: any) {
@@ -64,7 +65,7 @@ export async function PUT(req: NextRequest) {
         if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
         const body = await req.json();
-        const { IdUsuario, Usuario, CorreoElectronico, Telefono, passwd, EsAdmin } = body;
+        const { IdUsuario, Usuario, CorreoElectronico, Telefono, passwd, EsAdmin, ProyectoIntegrados } = body;
 
         if (!IdUsuario || !Usuario || !CorreoElectronico) {
             return NextResponse.json({ error: 'missingFields' }, { status: 400 });
@@ -72,23 +73,24 @@ export async function PUT(req: NextRequest) {
 
         let updateQuery = '';
         let params: any[] = [];
+        const projectIntegrated = ProyectoIntegrados ? 1 : 0;
 
         if (passwd) {
             // Update with password
             updateQuery = `
                 UPDATE tblUsuarios 
-                SET Usuario = ?, CorreoElectronico = ?, Telefono = ?, passwd = ?, EsAdmin = ?
+                SET Usuario = ?, CorreoElectronico = ?, Telefono = ?, passwd = ?, EsAdmin = ?, ProyectoIntegrados = ?
                 WHERE IdUsuario = ?
             `;
-            params = [Usuario, CorreoElectronico, Telefono || '', passwd, EsAdmin ?? 1, IdUsuario];
+            params = [Usuario, CorreoElectronico, Telefono || '', passwd, EsAdmin ?? 1, projectIntegrated, IdUsuario];
         } else {
             // Update without password
             updateQuery = `
                 UPDATE tblUsuarios 
-                SET Usuario = ?, CorreoElectronico = ?, Telefono = ?, EsAdmin = ?
+                SET Usuario = ?, CorreoElectronico = ?, Telefono = ?, EsAdmin = ?, ProyectoIntegrados = ?
                 WHERE IdUsuario = ?
             `;
-            params = [Usuario, CorreoElectronico, Telefono || '', EsAdmin ?? 1, IdUsuario];
+            params = [Usuario, CorreoElectronico, Telefono || '', EsAdmin ?? 1, projectIntegrated, IdUsuario];
         }
 
         await query(updateQuery, params);

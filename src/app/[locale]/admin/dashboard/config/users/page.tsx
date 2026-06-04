@@ -15,6 +15,7 @@ interface User {
     Telefono: string;
     Status: number;
     EsAdmin: number;
+    ProyectoIntegrados?: number;
 }
 
 export default function AdminUsersPage() {
@@ -27,7 +28,8 @@ export default function AdminUsersPage() {
         CorreoElectronico: '',
         Telefono: '',
         passwd: '',
-        EsAdmin: 0
+        EsAdmin: 0,
+        ProyectoIntegrados: 0
     });
 
     // States for Project Assignments
@@ -77,7 +79,8 @@ export default function AdminUsersPage() {
                 CorreoElectronico: user.CorreoElectronico || '',
                 Telefono: user.Telefono || '',
                 passwd: '', // Don't populate password for security, leave blank to not update
-                EsAdmin: user.EsAdmin || 1
+                EsAdmin: user.EsAdmin ?? 0,
+                ProyectoIntegrados: user.ProyectoIntegrados || 0
             });
         } else {
             setEditingId(null);
@@ -86,7 +89,8 @@ export default function AdminUsersPage() {
                 CorreoElectronico: '',
                 Telefono: '',
                 passwd: '',
-                EsAdmin: 0
+                EsAdmin: 0,
+                ProyectoIntegrados: 0
             });
         }
         setIsModalOpen(true);
@@ -383,9 +387,57 @@ export default function AdminUsersPage() {
                                     value={formData.EsAdmin}
                                     onChange={(e) => setFormData({ ...formData, EsAdmin: parseInt(e.target.value) })}
                                 >
-                                    <option value={0}>0 - Super admin de proyecto</option>
+                                    <option value={0}>0 - Usuario de proyectos</option>
                                     <option value={1}>1 - Administrador de Proyectos</option>
                                 </select>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '8px', marginTop: '0.5rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <div>
+                                        <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>Proyectos Integrados</div>
+                                    </div>
+                                </div>
+                                <label style={{
+                                    position: 'relative',
+                                    display: 'inline-block',
+                                    width: '44px',
+                                    height: '22px',
+                                    cursor: 'pointer'
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.ProyectoIntegrados === 1}
+                                        onChange={(e) => setFormData({ ...formData, ProyectoIntegrados: e.target.checked ? 1 : 0 })}
+                                        style={{
+                                            opacity: 0,
+                                            width: 0,
+                                            height: 0
+                                        }}
+                                    />
+                                    <span style={{
+                                        position: 'absolute',
+                                        top: 0, left: 0, right: 0, bottom: 0,
+                                        backgroundColor: formData.ProyectoIntegrados === 1 ? 'var(--neon-blue)' : 'rgba(255,255,255,0.1)',
+                                        borderColor: formData.ProyectoIntegrados === 1 ? 'var(--neon-blue)' : 'rgba(255,255,255,0.1)',
+                                        borderWidth: '1px',
+                                        borderStyle: 'solid',
+                                        borderRadius: '34px',
+                                        transition: '.4s'
+                                    }}>
+                                        <span style={{
+                                            position: 'absolute',
+                                            content: '""',
+                                            height: '14px',
+                                            width: '14px',
+                                            left: formData.ProyectoIntegrados === 1 ? '26px' : '4px',
+                                            bottom: '3px',
+                                            backgroundColor: 'white',
+                                            borderRadius: '50%',
+                                            transition: '.4s'
+                                        }} />
+                                    </span>
+                                </label>
                             </div>
 
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>

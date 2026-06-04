@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
         if (!sessionData) {
             // 1. Check if the user is a Global Admin (tblUsuarios directly)
             const globalAdminData = await query(
-                `SELECT IdUsuario, Usuario, EsAdmin, 0 AS IdProyecto, 'Integra Admin' AS Proyecto, 'BDIntegraProjects' AS BaseDatos, 0 AS IdPuesto, CASE WHEN EsAdmin = 2 THEN 'Super Admin' ELSE 'Project Admin' END AS Puesto, 0 AS IdSucursal, 'Central' AS Sucursal, '2.0' AS Version 
+                `SELECT IdUsuario, Usuario, EsAdmin, ProyectoIntegrados, 0 AS IdProyecto, 'Integra Admin' AS Proyecto, 'BDIntegraProjects' AS BaseDatos, 0 AS IdPuesto, CASE WHEN EsAdmin = 2 THEN 'Super Admin' ELSE 'Project Admin' END AS Puesto, 0 AS IdSucursal, 'Central' AS Sucursal, '2.0' AS Version 
                  FROM tblUsuarios 
                  WHERE CorreoElectronico = ? AND Passwd = ? AND Status = 0 AND (EsAdmin = 1 OR EsAdmin = 2)`,
                 [email, password]
@@ -114,12 +114,13 @@ export async function POST(req: NextRequest) {
                     positionId: user.IdPuesto,
                     position: user.Puesto,
                     isAdmin: user.EsAdmin,
-                    version: user.Version || '2.0'
+                    version: user.Version || '2.0',
+                    proyectoIntegrados: user.ProyectoIntegrados || 0
                 };
             } else {
                 // 2. Not a Global Admin, find standard user and their project
                 const userData = await query(
-                    `SELECT u.IdUsuario, u.Usuario, u.EsAdmin, p.IdProyecto, p.Proyecto, p.BaseDatos, p.Version, 0 AS IdPuesto, 'Usuario' AS Puesto, 0 AS IdSucursal, '' AS Sucursal 
+                    `SELECT u.IdUsuario, u.Usuario, u.EsAdmin, u.ProyectoIntegrados, p.IdProyecto, p.Proyecto, p.BaseDatos, p.Version, 0 AS IdPuesto, 'Usuario' AS Puesto, 0 AS IdSucursal, '' AS Sucursal 
                      FROM tblUsuarios u
                      JOIN tblProyectosUsuarios pu ON u.IdUsuario = pu.IdUsuario
                      JOIN tblProyectos p ON pu.IdProyecto = p.IdProyecto
@@ -155,7 +156,8 @@ export async function POST(req: NextRequest) {
                     positionId: user.IdPuesto,
                     position: user.Puesto,
                     isAdmin: isAdminLevel,
-                    version: user.Version || '1.0'
+                    version: user.Version || '1.0',
+                    proyectoIntegrados: user.ProyectoIntegrados || 0
                 };
             }
         }

@@ -69,6 +69,8 @@ interface AiAgentProps {
     mode?: 'floating' | 'embedded';
     /** Versión del proyecto. En '1.0' se desactiva la navegación a pantallas v2.0. */
     version?: string;
+    userId?: number;
+    projectId?: number;
 }
 
 // ─── Page suggestions ─────────────────────────────────────────────────────────
@@ -452,7 +454,7 @@ function Avatar() {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function AiAgent({ mode = 'floating', version }: AiAgentProps) {
+export default function AiAgent({ mode = 'floating', version, userId, projectId }: AiAgentProps) {
     const pathname = usePathname();
     const router   = useRouter();
     const isV1     = String(version ?? '') === '1.0';
@@ -467,25 +469,63 @@ export default function AiAgent({ mode = 'floating', version }: AiAgentProps) {
     const [streamPhase,   setStreamPhase]   = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        try {
-            const saved = localStorage.getItem(CHAT_STORAGE_KEY);
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                if (Array.isArray(parsed.messages)) setMessages(parsed.messages);
-                if (CLAUDE_MODELS.some(m => m.id === parsed.model)) setModel(parsed.model);
-            }
-        } catch { }
-        setHydrated(true);
-    }, []);
+    const [activeUserProj, setActiveUserProj] = useState<{ userId: number; projectId: number } | null>(null);
+    const loadedKeyRef = useRef<string | null>(null);
 
     useEffect(() => {
-        if (!hydrated) return;
+        if (userId && projectId) {
+            setActiveUserProj({ userId, projectId });
+        } else {
+            fetch('/api/session/current')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.userId && data.projectId) {
+                        setActiveUserProj({ userId: data.userId, projectId: data.projectId });
+                    }
+                })
+                .catch(console.error);
+        }
+    }, [userId, projectId]);
+
+    const storageKey = useMemo(() => {
+        if (!activeUserProj) return null;
+        return `integra-gym-agent-chat-${activeUserProj.userId}-${activeUserProj.projectId}`;
+    }, [activeUserProj]);
+
+    useEffect(() => {
+        if (!storageKey) return;
         try {
-            if (messages.length > 0) localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ messages, model }));
-            else localStorage.removeItem(CHAT_STORAGE_KEY);
+            const saved = localStorage.getItem(storageKey);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed.messages)) {
+                    setMessages(parsed.messages);
+                } else {
+                    setMessages([]);
+                }
+                if (CLAUDE_MODELS.some(m => m.id === parsed.model)) {
+                    setModel(parsed.model);
+                }
+            } else {
+                setMessages([]);
+            }
+        } catch {
+            setMessages([]);
+        }
+        loadedKeyRef.current = storageKey;
+        setHydrated(true);
+    }, [storageKey]);
+
+    useEffect(() => {
+        if (!hydrated || !storageKey || loadedKeyRef.current !== storageKey) return;
+        try {
+            if (messages.length > 0) {
+                localStorage.setItem(storageKey, JSON.stringify({ messages, model }));
+            } else {
+                localStorage.removeItem(storageKey);
+            }
         } catch { }
-    }, [messages, model, hydrated]);
+    }, [messages, model, hydrated, storageKey]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -608,7 +648,9 @@ export default function AiAgent({ mode = 'floating', version }: AiAgentProps) {
 
     const handleClear = () => {
         setMessages([]);
-        localStorage.removeItem(CHAT_STORAGE_KEY);
+        if (storageKey) {
+            localStorage.removeItem(storageKey);
+        }
     };
 
     const handleNavigate = useCallback((path: string) => {

@@ -97,7 +97,7 @@ async function runToolBlocks(
         description: `Ejecuta SQL SELECT/WITH de solo lectura contra la BD MySQL del gimnasio.
 REGLAS OBLIGATORIAS:
 - VENTAS: Las ventas se obtienen exclusivamente de tblMovimientos (no de tblVentas). La fecha de venta es FechaMovimiento, el detalle de ventas es tblDetalleMovimientos y las formas de pago se obtienen de tblMovimientosPagos.
-- CLIENTES: Los clientes son los socios y se obtienen siempre de la tabla tblSocios. El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (tiene mayor prioridad que su correo electrónico 'CorreoElectronico'). Al listar o consultar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' como contacto principal. Si pide consulta de Hombres/Mujeres, debes consultar el campo 'Sexo' en 'tblSocios', donde: 0 o 1 = Hombre, y 2 = Mujer.
+- CLIENTES: Los clientes son los socios y se obtienen siempre de la tabla tblSocios. El código del socio (CodigoSocio) se almacena y consulta físicamente en el campo 'CodigoBarras' en 'tblSocios'; usa siempre 'CodigoBarras' para buscar o referirte a este código. El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (tiene mayor prioridad que su correo electrónico 'CorreoElectronico'). Al listar o consultar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' como contacto principal. Si pide consulta de Hombres/Mujeres, debes consultar el campo 'Sexo' en 'tblSocios', donde: 0 o 1 = Hombre, y 2 = Mujer.
 - VISITAS: La tabla tblVisitas indica visitas/asistencias únicamente de socios/clientes (FechaVisita).
 - ASISTENCIAS: La tabla tblAsistencias indica las asistencias de empleados/personal (FechaAsistencia).
 - ASISTENCIA INDIVIDUAL: Al preguntar por la asistencia o accesos de una persona específica por su nombre (ej. "asistencia de Juan"), busca primero en 'tblSocios'; si existe, consulta en 'tblVisitas' usando 'IdSocio'; si no existe en 'tblSocios', búscalo en 'tblUsuarios' (usuarios/empleados) y si existe ahí, consulta su asistencia en 'tblAsistencias' relacionando por 'IdUsuario'.
@@ -235,7 +235,28 @@ CÓMO INTERPRETAR EL PERÍODO (con fechas reales — usa DATE/MONTH/YEAR):
     const ctxExtra = `Sucursal activa: ${branchId || 'todas'}${branchName ? ` (${branchName})` : ''} | Página: ${context?.currentPage || ''}`;
 
     // Bloque de navegación. El agente SIEMPRE puede sugerir pantallas del sistema a través de bloques ```nav.
-    const navBlock = `
+    const navBlock = isV1
+        ? `
+══════════════════════════════════════════
+PANTALLAS DEL DASHBOARD (guiar al usuario)
+══════════════════════════════════════════
+Cuando al usuario le sirva ABRIR una pantalla del sistema, incluye al FINAL un bloque
+\`\`\`nav con 1 a 2 destinos. Formato EXACTO (JSON en una sola línea):
+
+\`\`\`nav
+{"items":[{"label":"Ver Dashboard","path":"/dashboard-v1","reason":"Resumen de métricas"}]}
+\`\`\`
+
+PANTALLAS DISPONIBLES (usa EXACTAMENTE estos paths, sin prefijo de idioma, sustituyendo los parámetros reales si los tienes):
+- /dashboard-v1 — Resumen general (V1)
+- /dashboard-v1/ai-agent — Chat con el Agente de IA
+- /training-plan?projectUuid=${projectUuid}&planUuid=[UUID] — Ver, Editar o Generar Plan de Entrenamiento (donde [UUID] es el UUID del plan)
+- /training-plan/share?projectUuid=${projectUuid}&planUuid=[UUID] — Compartir rutina con el Socio (Vista de solo lectura y descarga del plan del socio, donde [UUID] es el UUID del plan)
+
+REGLAS DE NAVEGACIÓN:
+- Úsalo SOLO cuando navegar aporte de verdad (no en cada respuesta).
+- Máximo 2 destinos; "path" debe ser uno EXACTO de la lista. Ponlo al final, sin anunciarlo.`
+        : `
 ══════════════════════════════════════════
 PANTALLAS DEL DASHBOARD (guiar al usuario)
 ══════════════════════════════════════════

@@ -169,12 +169,16 @@ export async function GET(req: NextRequest) {
         timelineStart.setDate(timelineStart.getDate() - 30);
 
         const amHistoryQuery = `
-            SELECT DATE_FORMAT(FechaVencimiento, '%Y-%m-%d') as vDate, COUNT(*) as qty
-            FROM tblSocios
-            WHERE Status = 0
-            AND FechaVencimiento IS NOT NULL
-            AND FechaVencimiento != '0000-00-00'
-            GROUP BY vDate
+            SELECT 
+                DATE_FORMAT(S.FechaVencimiento, '%Y-%m-%d') as vDate, 
+                COALESCE(B.Sucursal, 'Sin Sucursal') as branch,
+                COUNT(*) as qty
+            FROM tblSocios S
+            LEFT JOIN tblSucursales B ON S.IdSucursal = B.IdSucursal
+            WHERE S.Status = 0
+            AND S.FechaVencimiento IS NOT NULL
+            AND S.FechaVencimiento != '0000-00-00'
+            GROUP BY vDate, branch
             ORDER BY vDate ASC
         `;
         let amData: any[] = [];
@@ -191,27 +195,35 @@ export async function GET(req: NextRequest) {
             amData = [];
         }
 
+        const uniqueBranches = Array.from(new Set(amData.map(r => r.branch || 'Sin Sucursal')));
+
         const activeMembersHistory = [];
         for (let i = 0; i <= 60; i++) {
             const d = new Date(timelineStart);
             d.setDate(d.getDate() + i);
             const dStr = d.toISOString().split('T')[0];
 
-            // Count members active on this specific day (Vencimiento >= this day)
-            const count = amData.reduce((acc, curr) => {
-                // Handle potential case mismatches or nulls
-                const rowDate = curr.vDate || curr.vdate;
-                if (rowDate && rowDate >= dStr) {
-                    return acc + (Number(curr.qty) || 0);
-                }
-                return acc;
-            }, 0);
-
-            activeMembersHistory.push({
+            const point: any = {
                 date: dStr,
                 label: d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }),
-                count
+            };
+
+            let totalCount = 0;
+            uniqueBranches.forEach(branch => {
+                const branchCount = amData.reduce((acc, curr) => {
+                    const rowDate = curr.vDate || curr.vdate;
+                    const rowBranch = curr.branch || 'Sin Sucursal';
+                    if (rowBranch === branch && rowDate && rowDate >= dStr) {
+                        return acc + (Number(curr.qty) || 0);
+                    }
+                    return acc;
+                }, 0);
+                point[branch] = branchCount;
+                totalCount += branchCount;
             });
+
+            point.count = totalCount;
+            activeMembersHistory.push(point);
         }
 
         console.log(`[Metrics V1] Timeline generated: ${activeMembersHistory.length} points.`);

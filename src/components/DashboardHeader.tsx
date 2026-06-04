@@ -15,9 +15,11 @@ interface Props {
     logo?: string | null;
     currentTheme: 'neon' | 'light';
     onToggleSidebar: () => void;
+    projectId?: number;
+    proyectoIntegrados?: number;
 }
 
-export default function DashboardHeader({ gymName, userName, branchName, position, isAdmin, logo, currentTheme, onToggleSidebar }: Props) {
+export default function DashboardHeader({ gymName, userName, branchName, position, isAdmin, logo, currentTheme, onToggleSidebar, projectId, proyectoIntegrados }: Props) {
     const router = useRouter();
     const pathname = usePathname();
     const locale = useLocale();
@@ -140,7 +142,7 @@ export default function DashboardHeader({ gymName, userName, branchName, positio
                             />
                         )}
                         {gymName}
-                        {(projects.length > 1 || isAdmin === 1 || isAdmin === 2) && (
+                        {(projects.length > 1 || isAdmin === 1 || isAdmin === 2) && proyectoIntegrados !== 1 && (
                             <button
                                 onClick={() => setShowProjectModal(true)}
                                 className="btn-secondary"
@@ -267,35 +269,50 @@ export default function DashboardHeader({ gymName, userName, branchName, positio
                     }}>
                         <h2 className="neon-text-blue" style={{ marginBottom: '1.5rem', textAlign: 'center' }}>Seleccionar Proyecto</h2>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                            {projects.map((p) => (
-                                <button
-                                    key={p.IdProyecto}
-                                    onClick={() => handleSwitchProject(p.IdProyecto)}
-                                    disabled={isSwitching}
-                                    className="btn-secondary"
-                                    style={{
-                                        padding: '1rem',
-                                        textAlign: 'left',
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        backgroundColor: 'rgba(255,255,255,0.05)',
-                                        transition: 'all 0.2s'
-                                    }}
-                                >
-                                    <div>
-                                        <div style={{ fontWeight: 'bold', fontSize: '1rem', color: 'var(--foreground)' }}>{p.Proyecto}</div>
-                                        <div style={{ fontSize: '0.75rem', opacity: 0.6, color: 'var(--foreground)' }}>Versión {p.Version}</div>
-                                    </div>
-                                    {isSwitching ? (
-                                        <RotateCcw size={16} className="animate-spin" />
-                                    ) : (
-                                        <div style={{ color: 'var(--neon-blue)' }}>
-                                            <Globe size={20} />
+                            {projects.map((p) => {
+                                const isCurrentProject = projectId ? p.IdProyecto === projectId : p.Proyecto === gymName;
+                                return (
+                                    <button
+                                        key={p.IdProyecto}
+                                        onClick={() => handleSwitchProject(p.IdProyecto)}
+                                        disabled={isSwitching}
+                                        className="btn-secondary"
+                                        style={{
+                                            padding: '1rem',
+                                            textAlign: 'left',
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            backgroundColor: isCurrentProject ? 'rgba(0, 243, 255, 0.08)' : 'rgba(255,255,255,0.05)',
+                                            border: isCurrentProject ? '1px solid var(--neon-blue)' : '1px solid var(--glass-border)',
+                                            boxShadow: isCurrentProject ? '0 0 15px rgba(0, 243, 255, 0.15)' : 'none',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <div style={{ fontWeight: 'bold', fontSize: '1rem', color: isCurrentProject ? 'var(--neon-blue)' : 'var(--foreground)' }}>
+                                                    {p.Proyecto}
+                                                </div>
+                                                {isCurrentProject && (
+                                                    <span style={{
+                                                        background: 'rgba(0, 243, 255, 0.2)',
+                                                        color: 'var(--neon-blue)',
+                                                        padding: '0.1rem 0.4rem',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.65rem',
+                                                        fontWeight: 'bold',
+                                                        textTransform: 'uppercase'
+                                                    }}>
+                                                        Activo
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div style={{ fontSize: '0.75rem', opacity: 0.6, color: 'var(--foreground)', marginTop: '0.2rem' }}>Versión {p.Version}</div>
                                         </div>
-                                    )}
-                                </button>
-                            ))}
+                                    </button>
+                                );
+                            })}
                         </div>
                         {(isAdmin === 1 || isAdmin === 2) && (
                             <button
@@ -336,6 +353,29 @@ export default function DashboardHeader({ gymName, userName, branchName, positio
                         >
                             Cancelar
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {isSwitching && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100vw',
+                    height: '100vh',
+                    backgroundColor: 'rgba(0,0,0,0.85)',
+                    backdropFilter: 'blur(10px)',
+                    zIndex: 10000,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '1.5rem'
+                }}>
+                    <RotateCcw size={48} className="animate-spin" style={{ color: 'var(--neon-blue)', filter: 'drop-shadow(0 0 8px var(--neon-blue))' }} />
+                    <div className="neon-text-blue" style={{ fontSize: '1.25rem', fontWeight: '600', letterSpacing: '0.05em' }}>
+                        Cambiando de proyecto...
                     </div>
                 </div>
             )}
