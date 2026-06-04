@@ -16,31 +16,67 @@ export async function GET(req: NextRequest) {
         const endDate = searchParams.get('endDate');
         const growthMode = searchParams.get('growthMode') || 'total'; // 'total' or 'mtd'
         const gender = searchParams.get('gender') || 'all'; // 'all', 'men', 'women'
+        const branchIdParam = searchParams.get('branchId') || 'all';
 
         if (!startDate || !endDate) {
             return NextResponse.json({ error: 'Missing date range' }, { status: 400 });
         }
 
+        let targetProjectId: number | null = null;
+        let bypassVirtual = false;
+
+        if (branchIdParam !== 'all') {
+            const tokens = branchIdParam.split(',');
+            const uniqueProjectIds = new Set<number>();
+            for (const token of tokens) {
+                if (token.includes('_')) {
+                    const [pIdStr] = token.split('_');
+                    const pId = parseInt(pIdStr, 10);
+                    if (!isNaN(pId)) {
+                        uniqueProjectIds.add(pId);
+                    }
+                }
+            }
+            if (uniqueProjectIds.size === 1) {
+                targetProjectId = Array.from(uniqueProjectIds)[0];
+                bypassVirtual = true;
+            } else if (uniqueProjectIds.size === 0) {
+                targetProjectId = session.projectId;
+                bypassVirtual = true;
+            }
+        }
+
+        const projectIdToQuery = targetProjectId !== null ? targetProjectId : session.projectId;
+        const querySuffix = `/*SELECTED_BRANCHES:${branchIdParam}*/`;
+
         // 1. Ventas, Operaciones & Ticket Promedio
         const salesQuery = `
             SELECT 
-                SUM(total) as totalVentas,
-                COUNT(IdMovimiento) as operaciones,
-                CASE WHEN COUNT(IdMovimiento) > 0 THEN SUM(total)/COUNT(IdMovimiento) ELSE 0 END AS TicketPromedio
-            FROM tblMovimientos
-            WHERE Status = 0
-            AND FechaMovimiento >= ? 
-            AND FechaMovimiento <= ?
-        `;
-        const salesData = await projectQuery(session.projectId, salesQuery, [`${startDate} 00:00:00`, `${endDate} 23:59:59`]) as any[];
+                SUM(M.total) as totalVentas,
+                COUNT(M.IdMovimiento) as operaciones,
+                CASE WHEN COUNT(M.IdMovimiento) > 0 THEN SUM(M.total)/COUNT(M.IdMovimiento) ELSE 0 END AS TicketPromedio
+            FROM tblMovimientos M
+            LEFT JOIN tblSucursales S ON M.IdSucursal = S.IdSucursal
+            WHERE M.Status = 0
+            AND (S.Status IS NULL OR S.Status != 2)
+            AND M.FechaMovimiento >= ? 
+            AND M.FechaMovimiento <= ?
+            /*BRANCH_FILTER_S*/
+        ` + querySuffix;
+        const salesParams = [`${startDate} 00:00:00`, `${endDate} 23:59:59`];
+        const salesData = await projectQuery(projectIdToQuery, salesQuery, salesParams, undefined, bypassVirtual) as any[];
 
         // 2. Visitas
         const visitsQuery = `
-            SELECT COUNT(IdVisita) as visitas
-            FROM tblVisitas
-            WHERE FechaVisita BETWEEN ? AND ?
-        `;
-        const visitsData = await projectQuery(session.projectId, visitsQuery, [`${startDate} 00:00:00`, `${endDate} 23:59:59`]) as any[];
+            SELECT COUNT(V.IdVisita) as visitas
+            FROM tblVisitas V
+            LEFT JOIN tblSucursales S ON V.IdSucursal = S.IdSucursal
+            WHERE V.FechaVisita BETWEEN ? AND ?
+            AND (S.Status IS NULL OR S.Status != 2)
+            /*BRANCH_FILTER_S*/
+        ` + querySuffix;
+        const visitsParams = [`${startDate} 00:00:00`, `${endDate} 23:59:59`];
+        const visitsData = await projectQuery(projectIdToQuery, visitsQuery, visitsParams, undefined, bypassVirtual) as any[];
 
         // Calculate average visits per day
         const dStart = new Date(startDate);
@@ -52,12 +88,16 @@ export async function GET(req: NextRequest) {
 
         // 3. Socios Activos (Status = 0 and Vencimiento >= today)
         const activeMembersQuery = `
-            SELECT COUNT(IdSocio) as sociosActivos
-            FROM tblSocios
-            WHERE Status = 0
-            AND FechaVencimiento >= CURDATE()
-        `;
-        const activeMembersData = await projectQuery(session.projectId, activeMembersQuery, []) as any[];
+            SELECT COUNT(S.IdSocio) as sociosActivos
+            FROM tblSocios S
+            LEFT JOIN tblSucursales B ON S.IdSucursal = B.IdSucursal
+            WHERE S.Status = 0
+            AND S.FechaVencimiento >= CURDATE()
+            AND (B.Status IS NULL OR B.Status != 2)
+            /*BRANCH_FILTER_S*/
+        ` + querySuffix;
+        const activeMembersParams: any[] = [];
+        const activeMembersData = await projectQuery(projectIdToQuery, activeMembersQuery, activeMembersParams, undefined, bypassVirtual) as any[];
 
         // 4. Sales Growth Calculation (Month-to-Date vs Previous Month-to-Date)
         const now = new Date();
@@ -78,10 +118,14 @@ export async function GET(req: NextRequest) {
 
         const growthQuery = `
             SELECT 
-                (SELECT SUM(total) FROM tblMovimientos WHERE Status = 0 AND FechaMovimiento >= ? AND FechaMovimiento <= ?) as mtd,
-                (SELECT SUM(total) FROM tblMovimientos WHERE Status = 0 AND FechaMovimiento >= ? AND FechaMovimiento <= ?) as lmtd
-        `;
-        const growthData = await projectQuery(session.projectId, growthQuery, [mtdStart, mtdEnd, lmtdStart, lmtdEnd]) as any[];
+                (SELECT SUM(M.total) FROM tblMovimientos M LEFT JOIN tblSucursales S ON M.IdSucursal = S.IdSucursal WHERE M.Status = 0 AND M.FechaMovimiento >= ? AND M.FechaMovimiento <= ? AND (S.Status IS NULL OR S.Status != 2) /*BRANCH_FILTER_S*/) as mtd,
+                (SELECT SUM(M.total) FROM tblMovimientos M LEFT JOIN tblSucursales S ON M.IdSucursal = S.IdSucursal WHERE M.Status = 0 AND M.FechaMovimiento >= ? AND M.FechaMovimiento <= ? AND (S.Status IS NULL OR S.Status != 2) /*BRANCH_FILTER_S*/) as lmtd
+        ` + querySuffix;
+        const growthParams = [
+            mtdStart, mtdEnd,
+            lmtdStart, lmtdEnd
+        ];
+        const growthData = await projectQuery(projectIdToQuery, growthQuery, growthParams, undefined, bypassVirtual) as any[];
 
         const mtdVal = growthData[0]?.mtd || 0;
         const lmtdVal = growthData[0]?.lmtd || 0;
@@ -103,31 +147,38 @@ export async function GET(req: NextRequest) {
             FROM tblMovimientos m
             LEFT JOIN tblSucursales s ON m.IdSucursal = s.IdSucursal
             WHERE m.Status = 0
+            AND (s.Status IS NULL OR s.Status != 2)
             AND m.FechaMovimiento >= ? 
             AND m.FechaMovimiento <= ?
+            /*BRANCH_FILTER_M*/
             GROUP BY s.Sucursal, m.IdSucursal
             ORDER BY total DESC
-        `;
-        const branchSalesData = await projectQuery(session.projectId, branchSalesQuery, [`${startDate} 00:00:00`, `${endDate} 23:59:59`]) as any[];
+        ` + querySuffix;
+        const branchSalesParams = [`${startDate} 00:00:00`, `${endDate} 23:59:59`];
+        const branchSalesData = await projectQuery(projectIdToQuery, branchSalesQuery, branchSalesParams, undefined, bypassVirtual) as any[];
 
         // 6. Monthly History (for Growth View)
         const prevYearStart = `${currentYear - 1}-01-01 00:00:00`;
 
         const historyQuery = `
             SELECT 
-                DATE_FORMAT(FechaMovimiento, '%m-%Y') as monthId,
-                CONCAT(DATE_FORMAT(FechaMovimiento, '%M'), ' ', YEAR(FechaMovimiento)) as MesTexto,
-                SUM(total) as Total,
-                YEAR(FechaMovimiento) as year_num,
-                MONTH(FechaMovimiento) as month_num
-            FROM tblMovimientos
-            WHERE Status = 0 
-            AND FechaMovimiento >= ?
-            ${growthMode === 'mtd' ? 'AND DAY(FechaMovimiento) <= DAY(Now())' : ''}
-            GROUP BY YEAR(FechaMovimiento), MONTH(FechaMovimiento), MesTexto, monthId
+                DATE_FORMAT(M.FechaMovimiento, '%m-%Y') as monthId,
+                CONCAT(DATE_FORMAT(M.FechaMovimiento, '%M'), ' ', YEAR(M.FechaMovimiento)) as MesTexto,
+                SUM(M.total) as Total,
+                YEAR(M.FechaMovimiento) as year_num,
+                MONTH(M.FechaMovimiento) as month_num
+            FROM tblMovimientos M
+            LEFT JOIN tblSucursales S ON M.IdSucursal = S.IdSucursal
+            WHERE M.Status = 0 
+            AND M.FechaMovimiento >= ?
+            AND (S.Status IS NULL OR S.Status != 2)
+            /*BRANCH_FILTER_S*/
+            ${growthMode === 'mtd' ? 'AND DAY(M.FechaMovimiento) <= DAY(Now())' : ''}
+            GROUP BY YEAR(M.FechaMovimiento), MONTH(M.FechaMovimiento), MesTexto, monthId
             ORDER BY year_num ASC, month_num ASC
-        `;
-        const historyData = await projectQuery(session.projectId, historyQuery, [prevYearStart]) as any[];
+        ` + querySuffix;
+        const historyParams = [prevYearStart];
+        const historyData = await projectQuery(projectIdToQuery, historyQuery, historyParams, undefined, bypassVirtual) as any[];
 
         // 7. Visits Heatmap (Day vs Hour)
         let visitsHeatmapData: any[] = [];
@@ -149,21 +200,23 @@ export async function GET(req: NextRequest) {
                     HOUR(A.FechaVisita) as hourOfDay,
                     COUNT(A.IdVisita) as count
                 FROM tblVisitas A
+                LEFT JOIN tblSucursales S ON A.IdSucursal = S.IdSucursal
                 ${genderJoin}
                 WHERE A.FechaVisita BETWEEN ? AND ?
+                AND (S.Status IS NULL OR S.Status != 2)
                 ${genderFilter}
+                /*BRANCH_FILTER_S*/
                 GROUP BY dayOfWeek, hourOfDay
                 ORDER BY dayOfWeek, hourOfDay
-            `;
-            visitsHeatmapData = await projectQuery(session.projectId, visitsHeatmapQuery, [`${startDate} 00:00:00`, `${endDate} 23:59:59`]) as any[];
+            ` + querySuffix;
+            const visitsHeatmapParams = [`${startDate} 00:00:00`, `${endDate} 23:59:59`];
+            visitsHeatmapData = await projectQuery(projectIdToQuery, visitsHeatmapQuery, visitsHeatmapParams, undefined, bypassVirtual) as any[];
         } catch (vhError) {
             console.error('Error fetching visits heatmap:', vhError);
-            // Fallback to empty if join fails or table missing
             visitsHeatmapData = [];
         }
 
         // 8. Active Members History (Timeline)
-        // Range: Today - 30 days to Today + 30 days
         const timelineStart = new Date();
         timelineStart.setHours(0, 0, 0, 0);
         timelineStart.setDate(timelineStart.getDate() - 30);
@@ -178,18 +231,20 @@ export async function GET(req: NextRequest) {
             WHERE S.Status = 0
             AND S.FechaVencimiento IS NOT NULL
             AND S.FechaVencimiento != '0000-00-00'
+            AND (B.Status IS NULL OR B.Status != 2)
+            /*BRANCH_FILTER_S*/
             GROUP BY vDate, branch
             ORDER BY vDate ASC
-        `;
+        ` + querySuffix;
         let amData: any[] = [];
         try {
-            console.log(`[Metrics V1] Fetching active members history for Project: ${session.projectId}`);
-            amData = await projectQuery(session.projectId, amHistoryQuery, []) as any[];
+            console.log(`[Metrics V1] Fetching active members history for Project: ${projectIdToQuery}`);
+            const amHistoryParams: any[] = [];
+            amData = await projectQuery(projectIdToQuery, amHistoryQuery, amHistoryParams, undefined, bypassVirtual) as any[];
             if (!Array.isArray(amData)) {
                 console.warn('[Metrics V1] amData is not an array:', amData);
                 amData = [];
             }
-            console.log(`[Metrics V1] amData rows: ${amData.length}. Sample:`, amData.slice(0, 3));
         } catch (e: any) {
             console.error('[Metrics V1] Error fetching amData:', e.message);
             amData = [];
@@ -226,10 +281,7 @@ export async function GET(req: NextRequest) {
             activeMembersHistory.push(point);
         }
 
-        console.log(`[Metrics V1] Timeline generated: ${activeMembersHistory.length} points.`);
-
         // 9. Members Expiring This Month
-        // Reuse variables declared earlier in the scope
         const expiringQuery = `
             SELECT S.Nombres as name, S.FechaVencimiento as expiry, B.Sucursal as branch
             FROM tblSocios S
@@ -237,14 +289,95 @@ export async function GET(req: NextRequest) {
             WHERE S.Status = 0
             AND MONTH(S.FechaVencimiento) = ?
             AND YEAR(S.FechaVencimiento) = ?
+            AND (B.Status IS NULL OR B.Status != 2)
+            /*BRANCH_FILTER_S*/
             ORDER BY S.FechaVencimiento ASC
             LIMIT 200
-        `;
+        ` + querySuffix;
         let expiringMembers: any[] = [];
         try {
-            expiringMembers = await projectQuery(session.projectId, expiringQuery, [currentMonth, currentYear]) as any[];
+            const expiringParams: any[] = [currentMonth, currentYear];
+            expiringMembers = await projectQuery(projectIdToQuery, expiringQuery, expiringParams, undefined, bypassVirtual) as any[];
         } catch (e: any) {
             console.error('[Metrics V1] Error fetching expiringMembers:', e.message);
+        }
+
+        // 10. Additional Branch breakdowns (Growth & Visits)
+        let branchGrowthData: any[] = [];
+        try {
+            const branchGrowthQuery = `
+                SELECT 
+                    COALESCE(s.Sucursal, 'Sin Sucursal') as name,
+                    m.IdSucursal,
+                    SUM(CASE WHEN m.FechaMovimiento >= ? AND m.FechaMovimiento <= ? THEN m.total ELSE 0 END) as mtd,
+                    SUM(CASE WHEN m.FechaMovimiento >= ? AND m.FechaMovimiento <= ? THEN m.total ELSE 0 END) as lmtd
+                FROM tblMovimientos m
+                LEFT JOIN tblSucursales s ON m.IdSucursal = s.IdSucursal
+                WHERE m.Status = 0
+                AND (s.Status IS NULL OR s.Status != 2)
+                /*BRANCH_FILTER_M*/
+                GROUP BY s.Sucursal, m.IdSucursal
+            ` + querySuffix;
+            const branchGrowthParams = [mtdStart, mtdEnd, lmtdStart, lmtdEnd];
+            const rawGrowth = await projectQuery(projectIdToQuery, branchGrowthQuery, branchGrowthParams, undefined, bypassVirtual) as any[];
+            branchGrowthData = rawGrowth.map((r: any) => {
+                const mtd = Number(r.mtd || 0);
+                const lmtd = Number(r.lmtd || 0);
+                let percent = 0;
+                if (lmtd > 0) {
+                    percent = ((mtd - lmtd) / lmtd) * 100;
+                } else if (mtd > 0) {
+                    percent = 100;
+                }
+                return {
+                    name: r.name,
+                    IdSucursal: r.IdSucursal,
+                    mtd,
+                    lmtd,
+                    percent
+                };
+            }).sort((a, b) => b.percent - a.percent);
+        } catch (e: any) {
+            console.error('Error fetching branch growth:', e.message);
+        }
+
+        let branchVisitsData: any[] = [];
+        try {
+            const branchVisitsQuery = `
+                SELECT 
+                    COALESCE(s.Sucursal, 'Sin Sucursal') as name,
+                    v.IdSucursal,
+                    COUNT(v.IdVisita) as visits
+                FROM tblVisitas v
+                LEFT JOIN tblSucursales s ON v.IdSucursal = s.IdSucursal
+                WHERE v.FechaVisita BETWEEN ? AND ?
+                AND (s.Status IS NULL OR s.Status != 2)
+                /*BRANCH_FILTER_V*/
+                GROUP BY s.Sucursal, v.IdSucursal
+                ORDER BY visits DESC
+            ` + querySuffix;
+            const branchVisitsParams = [`${startDate} 00:00:00`, `${endDate} 23:59:59`];
+            branchVisitsData = await projectQuery(projectIdToQuery, branchVisitsQuery, branchVisitsParams, undefined, bypassVirtual) as any[];
+        } catch (e: any) {
+            console.error('Error fetching branch visits:', e.message);
+        }
+
+        // 11. All active branches (for the filter dropdown / checkboxes)
+        let branchesList: any[] = [];
+        try {
+            const branchesQuery = `
+                SELECT IdSucursal, Sucursal as name
+                FROM tblSucursales
+                WHERE Status != 2
+                ORDER BY Sucursal ASC
+            `;
+            const rawBranches = await projectQuery(session.projectId, branchesQuery, []) as any[];
+            branchesList = rawBranches.map((b: any) => ({
+                id: b._IdProyecto ? `${b._IdProyecto}_${b.IdSucursal}` : `${session.projectId}_${b.IdSucursal}`,
+                name: b.name
+            }));
+        } catch (e: any) {
+            console.error('Error fetching branches list:', e.message);
         }
 
         return NextResponse.json({
@@ -263,7 +396,10 @@ export async function GET(req: NextRequest) {
             monthlyHistory: historyData,
             visitsHeatmap: visitsHeatmapData,
             activeMembersHistory: activeMembersHistory,
-            expiringMembers: expiringMembers
+            expiringMembers: expiringMembers,
+            branchGrowth: branchGrowthData,
+            branchVisits: branchVisitsData,
+            branchesList: branchesList
         });
 
     } catch (error: any) {

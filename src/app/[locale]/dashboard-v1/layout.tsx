@@ -11,22 +11,21 @@ export default async function DashboardLayoutV1({
     const sessionCookie = cookieStore.get('session');
 
     console.log('[DashboardLayoutV1] Session Cookie present:', !!sessionCookie);
-    if (sessionCookie) {
-        try {
-            const parsed = JSON.parse(sessionCookie.value);
-            console.log('[DashboardLayoutV1] Session User:', parsed.userId, 'Project:', parsed.projectId, 'Version:', parsed.version);
-        } catch (e) {
-            console.error('[DashboardLayoutV1] Error parsing session:', e);
-        }
-    }
-
     if (!sessionCookie?.value) {
         console.log('[DashboardLayoutV1] No session found, redirecting to login');
         redirect({ href: '/login', locale: 'es' });
         return null;
     }
 
-    const session = JSON.parse(sessionCookie.value);
+    let session: any = null;
+    try {
+        session = JSON.parse(sessionCookie.value);
+        console.log('[DashboardLayoutV1] Session User:', session.userId, 'Project:', session.projectId, 'Version:', session.version);
+    } catch (e) {
+        console.error('[DashboardLayoutV1] Error parsing session:', e);
+        redirect({ href: '/login', locale: 'es' });
+        return null;
+    }
 
     // Ensure only v1 logic passes, or just render it
     if (session.version !== '1.0' && session.isAdmin !== 1 && session.isAdmin !== 2) {

@@ -15,7 +15,14 @@ export default async function DashboardLayout({
         return null;
     }
 
-    const session = JSON.parse(sessionCookie.value);
+    let session: any = null;
+    try {
+        session = JSON.parse(sessionCookie.value);
+    } catch (e) {
+        console.error('[DashboardLayout] Error parsing session:', e);
+        redirect({ href: '/login', locale: 'es' });
+        return null;
+    }
 
     return (
         <DashboardShell session={session}>

@@ -14,10 +14,14 @@ export async function GET(req: NextRequest) {
         const { searchParams } = new URL(req.url);
         const movId = searchParams.get('movId');
         const branchId = searchParams.get('branchId');
+        const projectIdParam = searchParams.get('projectId');
 
         if (!movId || !branchId) {
             return NextResponse.json({ error: 'Missing parameters: movId and branchId are required.' }, { status: 400 });
         }
+
+        const projectIdToQuery = projectIdParam ? parseInt(projectIdParam, 10) : session.projectId;
+        const bypassVirtual = projectIdParam !== null;
 
         const detailQuery = `
             SELECT 
@@ -32,10 +36,10 @@ export async function GET(req: NextRequest) {
             AND IdSucursal = ?
         `;
 
-        const rows = await projectQuery(session.projectId, detailQuery, [
+        const rows = await projectQuery(projectIdToQuery, detailQuery, [
             parseInt(movId),
             parseInt(branchId)
-        ]) as any[];
+        ], undefined, bypassVirtual) as any[];
 
         return NextResponse.json({ data: rows });
 

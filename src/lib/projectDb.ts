@@ -72,6 +72,64 @@ export async function getProjectConnectionPoolRaw(projectId: number, metadata?: 
     return pool;
 }
 
+export function applyBranchFilters(sql: string, projectId: number, branchIdParam: string | undefined): string {
+    const cleanedSql = sql.replace(/\/\*SELECTED_BRANCHES:[^*]+\*\//g, '');
+
+    if (!branchIdParam || branchIdParam === 'all') {
+        return cleanedSql
+            .replace(/\/\*BRANCH_FILTER\*\//g, '')
+            .replace(/\/\*BRANCH_FILTER_S\*\//g, '')
+            .replace(/\/\*BRANCH_FILTER_M\*\//g, '')
+            .replace(/\/\*BRANCH_FILTER_A\*\//g, '')
+            .replace(/\/\*BRANCH_FILTER_V\*\//g, '');
+    }
+
+    const tokens = branchIdParam.split(',');
+    const selectedBranches: number[] = [];
+    let hasBranchesForThisProject = false;
+
+    for (const token of tokens) {
+        if (token.includes('_')) {
+            const [pIdStr, bIdStr] = token.split('_');
+            const pId = parseInt(pIdStr, 10);
+            const bId = parseInt(bIdStr, 10);
+            if (pId === projectId && !isNaN(bId)) {
+                selectedBranches.push(bId);
+                hasBranchesForThisProject = true;
+            }
+        } else {
+            const bId = parseInt(token, 10);
+            if (!isNaN(bId)) {
+                selectedBranches.push(bId);
+                hasBranchesForThisProject = true;
+            }
+        }
+    }
+
+    if (!hasBranchesForThisProject) {
+        return cleanedSql
+            .replace(/\/\*BRANCH_FILTER\*\//g, ' AND 1 = 0 ')
+            .replace(/\/\*BRANCH_FILTER_S\*\//g, ' AND 1 = 0 ')
+            .replace(/\/\*BRANCH_FILTER_M\*\//g, ' AND 1 = 0 ')
+            .replace(/\/\*BRANCH_FILTER_A\*\//g, ' AND 1 = 0 ')
+            .replace(/\/\*BRANCH_FILTER_V\*\//g, ' AND 1 = 0 ');
+    }
+
+    const branchListStr = selectedBranches.join(',');
+    const inClause = ` AND IdSucursal IN (${branchListStr}) `;
+    const inClauseS = ` AND S.IdSucursal IN (${branchListStr}) `;
+    const inClauseM = ` AND m.IdSucursal IN (${branchListStr}) `;
+    const inClauseA = ` AND A.IdSucursal IN (${branchListStr}) `;
+    const inClauseV = ` AND v.IdSucursal IN (${branchListStr}) `;
+
+    return cleanedSql
+        .replace(/\/\*BRANCH_FILTER\*\//g, inClause)
+        .replace(/\/\*BRANCH_FILTER_S\*\//g, inClauseS)
+        .replace(/\/\*BRANCH_FILTER_M\*\//g, inClauseM)
+        .replace(/\/\*BRANCH_FILTER_A\*\//g, inClauseA)
+        .replace(/\/\*BRANCH_FILTER_V\*\//g, inClauseV);
+}
+
 // Helper to unifiy / aggregate results from multiple databases in memory
 function mergeDbResults(sql: string, allResults: any[][], projects: any[]): any[] {
     const flatRows: any[] = [];
@@ -212,10 +270,17 @@ class VirtualPoolWrapper {
             return await primaryPool.query(sql, params);
         }
 
+        let branchIdParam: string | undefined = undefined;
+        const match = sql.match(/\/\*SELECTED_BRANCHES:([^*]+)\*\//);
+        if (match) {
+            branchIdParam = match[1];
+        }
+
         const promises = this.projects.map(async (proj) => {
             try {
+                const filteredSql = applyBranchFilters(sql, proj.IdProyecto, branchIdParam);
                 const pool = await getProjectConnectionPoolRaw(proj.IdProyecto, proj);
-                const [results] = await pool.query(sql, params);
+                const [results] = await pool.query(filteredSql, params);
                 return results as any[];
             } catch (err) {
                 console.error(`VirtualPool query error on project ${proj.IdProyecto}:`, err);
@@ -234,10 +299,17 @@ class VirtualPoolWrapper {
             return await primaryPool.execute(sql, params);
         }
 
+        let branchIdParam: string | undefined = undefined;
+        const match = sql.match(/\/\*SELECTED_BRANCHES:([^*]+)\*\//);
+        if (match) {
+            branchIdParam = match[1];
+        }
+
         const promises = this.projects.map(async (proj) => {
             try {
+                const filteredSql = applyBranchFilters(sql, proj.IdProyecto, branchIdParam);
                 const pool = await getProjectConnectionPoolRaw(proj.IdProyecto, proj);
-                const [results] = await pool.execute(sql, params);
+                const [results] = await pool.execute(filteredSql, params);
                 return results as any[];
             } catch (err) {
                 console.error(`VirtualPool execute error on project ${proj.IdProyecto}:`, err);
@@ -250,11 +322,11 @@ class VirtualPoolWrapper {
     }
 }
 
-export async function getProjectConnectionPool(projectId: number, metadata?: ProjectMetadata) {
+export async function getProjectConnectionPool(projectId: number, metadata?: ProjectMetadata, bypassVirtual: boolean = false) {
     try {
         const cookieStore = await cookies();
         const sessionCookie = cookieStore.get('session');
-        if (sessionCookie?.value) {
+        if (!bypassVirtual && sessionCookie?.value) {
             const session = JSON.parse(sessionCookie.value);
             if (session.proyectoIntegrados === 1) {
                 // Fetch all user's active projects
@@ -286,8 +358,17 @@ export async function getProjectConnectionPool(projectId: number, metadata?: Pro
     return await getProjectConnectionPoolRaw(projectId, metadata);
 }
 
-export async function projectQuery(projectId: number, sql: string, params?: any[], metadata?: ProjectMetadata) {
-    const pool = await getProjectConnectionPool(projectId, metadata);
-    const [results] = await pool.execute(sql, params);
+export async function projectQuery(projectId: number, sql: string, params?: any[], metadata?: ProjectMetadata, bypassVirtual: boolean = false) {
+    const pool = await getProjectConnectionPool(projectId, metadata, bypassVirtual);
+    let finalSql = sql;
+    if (!(pool instanceof VirtualPoolWrapper)) {
+        let branchIdParam: string | undefined = undefined;
+        const match = sql.match(/\/\*SELECTED_BRANCHES:([^*]+)\*\//);
+        if (match) {
+            branchIdParam = match[1];
+        }
+        finalSql = applyBranchFilters(sql, projectId, branchIdParam);
+    }
+    const [results] = await pool.execute(finalSql, params);
     return results;
 }

@@ -15,7 +15,14 @@ export default async function AdminDashboardLayout({
         return null;
     }
 
-    const session = JSON.parse(sessionCookie.value);
+    let session: any = null;
+    try {
+        session = JSON.parse(sessionCookie.value);
+    } catch (e) {
+        console.error('[AdminDashboardLayout] Error parsing session:', e);
+        redirect({ href: '/login', locale: 'es' });
+        return null;
+    }
 
     // Verify if actually an admin
     if (session.isAdmin !== 1 && session.isAdmin !== 2) {

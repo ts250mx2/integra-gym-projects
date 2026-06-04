@@ -44,6 +44,23 @@ interface BranchSale {
     total: number;
     operaciones: number;
     ticketPromedio: number;
+    _IdProyecto?: number;
+}
+
+interface BranchGrowthItem {
+    name: string;
+    IdSucursal: number;
+    mtd: number;
+    lmtd: number;
+    percent: number;
+    _IdProyecto?: number;
+}
+
+interface BranchVisitsItem {
+    name: string;
+    IdSucursal: number;
+    visits: number;
+    _IdProyecto?: number;
 }
 
 interface BranchDetailRow {
@@ -187,7 +204,7 @@ interface Props {
 
 export default function DashboardMetricsV1({ title, welcome }: Props) {
     const [loading, setLoading] = useState(true);
-    const [activePeriod, setActivePeriod] = useState<string>('mes');
+    const [activePeriod, setActivePeriod] = useState<string>('hoy');
     const [metrics, setMetrics] = useState({
         ventas: 0,
         operaciones: 0,
@@ -204,8 +221,14 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
         monthlyHistory: [] as MonthlyHistory[],
         visitsHeatmap: [] as VisitsHeatmapItem[],
         activeMembersHistory: [] as ActiveMembersHistoryItem[],
-        expiringMembers: [] as ExpiringMember[]
+        expiringMembers: [] as ExpiringMember[],
+        branchGrowth: [] as BranchGrowthItem[],
+        branchVisits: [] as BranchVisitsItem[]
     });
+
+    const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+    const [branchesInitialized, setBranchesInitialized] = useState(false);
+    const [branchesList, setBranchesList] = useState<{ id: string; name: string }[]>([]);
 
     // Dates initialization (Today)
     const getTodayStr = () => new Date().toISOString().split('T')[0];
@@ -218,8 +241,8 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
     const [gender, setGender] = useState<'all' | 'men' | 'women'>('all');
 
     // Branch Detail Modal state
-    const [branchModal, setBranchModal] = useState<{ isOpen: boolean; branchName: string; branchId: number | null; rows: BranchDetailRow[]; loading: boolean; }>(
-        { isOpen: false, branchName: '', branchId: null, rows: [], loading: false }
+    const [branchModal, setBranchModal] = useState<{ isOpen: boolean; branchName: string; branchId: number | null; projectId: number | null; rows: BranchDetailRow[]; loading: boolean; }>(
+        { isOpen: false, branchName: '', branchId: null, projectId: null, rows: [], loading: false }
     );
 
     // Sale Detail Modal state
@@ -227,10 +250,10 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
         { isOpen: false, folio: '', rows: [], loading: false }
     );
 
-    const fetchBranchDetail = async (branchId: number, branchName: string) => {
-        setBranchModal({ isOpen: true, branchName, branchId, rows: [], loading: true });
+    const fetchBranchDetail = async (branchId: number, branchName: string, projectId?: number) => {
+        setBranchModal({ isOpen: true, branchName, branchId, projectId: projectId || null, rows: [], loading: true });
         try {
-            const res = await fetch(`/api/dashboard-v1/branch-detail?startDate=${startDate}&endDate=${endDate}&branchId=${branchId}`);
+            const res = await fetch(`/api/dashboard-v1/branch-detail?startDate=${startDate}&endDate=${endDate}&branchId=${branchId}${projectId ? `&projectId=${projectId}` : ''}`);
             const data = await res.json();
             setBranchModal(prev => ({ ...prev, rows: data.data || [], loading: false }));
         } catch (err) {
@@ -239,10 +262,11 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
         }
     };
 
-    const fetchSaleDetail = async (movId: number, branchId: number, folio: string) => {
+    const fetchSaleDetail = async (movId: number, branchId: number, folio: string, projectId?: number | null) => {
         setSaleModal({ isOpen: true, folio, rows: [], loading: true });
         try {
-            const res = await fetch(`/api/dashboard-v1/sale-detail?movId=${movId}&branchId=${branchId}`);
+            const projId = projectId || branchModal.projectId;
+            const res = await fetch(`/api/dashboard-v1/sale-detail?movId=${movId}&branchId=${branchId}${projId ? `&projectId=${projId}` : ''}`);
             const data = await res.json();
             setSaleModal(prev => ({ ...prev, rows: data.data || [], loading: false }));
         } catch (err) {
@@ -272,23 +296,161 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
         XLSX.writeFile(wb, fileName);
     };
 
+    const toggleBranch = (id: string) => {
+        setSelectedBranchIds(prev => {
+            if (prev.includes(id)) {
+                return prev.filter(x => x !== id);
+            } else {
+                return [...prev, id];
+            }
+        });
+    };
+
+    const selectAllBranches = () => {
+        setSelectedBranchIds(branchesList.map(b => b.id));
+    };
+
+    const deselectAllBranches = () => {
+        setSelectedBranchIds([]);
+    };
+
+    useEffect(() => {
+        if (branchesList.length > 0 && !branchesInitialized) {
+            setSelectedBranchIds(branchesList.map(b => b.id));
+            setBranchesInitialized(true);
+        }
+    }, [branchesList, branchesInitialized]);
+
     useEffect(() => {
         fetchMetrics();
-    }, [startDate, endDate, growthMode, gender]);
+    }, [startDate, endDate, growthMode, gender, selectedBranchIds, activeView]);
 
     const fetchMetrics = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/dashboard-v1/metrics?startDate=${startDate}&endDate=${endDate}&growthMode=${growthMode}&gender=${gender}`);
+            const showFilter = activeView === 'growth' || activeView === 'visits';
+            const branchIdVal = showFilter && selectedBranchIds.length > 0
+                ? selectedBranchIds.join(',')
+                : (showFilter && selectedBranchIds.length === 0 ? 'none' : 'all');
+
+            const res = await fetch(`/api/dashboard-v1/metrics?startDate=${startDate}&endDate=${endDate}&growthMode=${growthMode}&gender=${gender}&branchId=${branchIdVal}`);
             const data = await res.json();
             if (data && !data.error) {
                 setMetrics(data);
+                if (data.branchesList) {
+                    setBranchesList(data.branchesList);
+                }
             }
         } catch (error) {
             console.error('Error fetching v1 metrics:', error);
         } finally {
             setLoading(false);
         }
+    };
+
+    const renderBranchCheckboxes = () => {
+        if (branchesList.length === 0) return null;
+        return (
+            <div className="glass-card" style={{
+                padding: '1rem',
+                marginBottom: '1rem',
+                border: '1px solid rgba(255, 255, 255, 0.05)',
+                background: 'rgba(255, 255, 255, 0.02)',
+                borderRadius: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+            }}>
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem'
+                }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--light-gray)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Filtrar por Sucursal:
+                    </span>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                            onClick={selectAllBranches}
+                            className="btn-secondary"
+                            style={{
+                                padding: '0.2rem 0.5rem',
+                                fontSize: '0.65rem',
+                                height: '24px',
+                                backgroundColor: 'rgba(255,255,255,0.03)',
+                                borderRadius: '6px',
+                                border: '1px solid rgba(255,255,255,0.1)'
+                            }}
+                        >
+                            Seleccionar Todas
+                        </button>
+                        <button
+                            onClick={deselectAllBranches}
+                            className="btn-secondary"
+                            style={{
+                                padding: '0.2rem 0.5rem',
+                                fontSize: '0.65rem',
+                                height: '24px',
+                                backgroundColor: 'rgba(255,255,255,0.03)',
+                                borderRadius: '6px',
+                                border: '1px solid rgba(255,255,255,0.1)'
+                            }}
+                        >
+                            Deseleccionar Todas
+                        </button>
+                    </div>
+                </div>
+
+                <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem'
+                }}>
+                    {branchesList.map(b => {
+                        const isSelected = selectedBranchIds.includes(b.id);
+                        return (
+                            <label
+                                key={b.id}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    padding: '0.4rem 0.8rem',
+                                    borderRadius: '20px',
+                                    backgroundColor: isSelected ? 'rgba(0, 243, 255, 0.1)' : 'rgba(255, 255, 255, 0.02)',
+                                    border: isSelected ? '1px solid rgba(0, 243, 255, 0.5)' : '1px solid rgba(255, 255, 255, 0.05)',
+                                    color: isSelected ? 'var(--neon-blue)' : 'var(--light-gray)',
+                                    fontSize: '0.75rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    fontWeight: isSelected ? 'bold' : 'normal',
+                                    userSelect: 'none'
+                                }}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleBranch(b.id)}
+                                    style={{
+                                        display: 'none'
+                                    }}
+                                />
+                                <div style={{
+                                    width: '10px',
+                                    height: '10px',
+                                    borderRadius: '50%',
+                                    backgroundColor: isSelected ? 'var(--neon-blue)' : 'rgba(255,255,255,0.15)',
+                                    transition: 'all 0.2s ease'
+                                }} />
+                                {b.name}
+                            </label>
+                        );
+                    })}
+                </div>
+            </div>
+        );
     };
 
     const setPeriod = (period: string) => {
@@ -309,11 +471,6 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
             case 'semana':
                 start = new Date(today);
                 start.setDate(today.getDate() - today.getDay());
-                end = today;
-                break;
-            case '7dias':
-                start = new Date(today);
-                start.setDate(today.getDate() - 6);
                 end = today;
                 break;
             case 'mes':
@@ -374,7 +531,6 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                 { id: 'hoy', label: 'Hoy' },
                                 { id: 'ayer', label: 'Ayer' },
                                 { id: 'semana', label: 'Semana' },
-                                { id: '7dias', label: '7 días' },
                                 { id: 'mes', label: 'Mes' },
                                 { id: 'mesAnterior', label: 'Mes anterior' },
                             ].map(p => (
@@ -782,7 +938,7 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                                         return (
                                                             <tr
                                                                 key={idx}
-                                                                onClick={() => branch.IdSucursal && fetchBranchDetail(branch.IdSucursal, branch.name)}
+                                                                onClick={() => branch.IdSucursal && fetchBranchDetail(branch.IdSucursal, branch.name, branch._IdProyecto)}
                                                                 style={{
                                                                     borderBottom: '1px solid rgba(255,255,255,0.05)',
                                                                     cursor: branch.IdSucursal ? 'pointer' : 'default',
@@ -830,146 +986,220 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                         </>
                     ) : activeView === 'visits' ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                            <div className="glass-card" style={{ padding: '1.5rem', minHeight: '400px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                                        <Clock size={20} color="var(--neon-blue)" />
-                                        <h3 style={{ fontSize: '1rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>
-                                            Mapa de Calor: Visitas por Día y Hora
-                                        </h3>
+                            {renderBranchCheckboxes()}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+                                {/* Heatmap Card */}
+                                <div className="glass-card" style={{ padding: '1.5rem', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                            <Clock size={20} color="var(--neon-blue)" />
+                                            <h3 style={{ fontSize: '1rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>
+                                                Mapa de Calor: Visitas por Día y Hora
+                                            </h3>
+                                        </div>
+
+                                        {/* Gender Filter Toggles */}
+                                        <div style={{ display: 'flex', gap: '0.5rem', backgroundColor: 'rgba(0,0,0,0.2)', padding: '3px', borderRadius: '8px' }}>
+                                            {([
+                                                { id: 'all', label: 'Todos' },
+                                                { id: 'men', label: 'Hombres' },
+                                                { id: 'women', label: 'Mujeres' }
+                                            ] as const).map(g => (
+                                                <button
+                                                    key={g.id}
+                                                    onClick={() => setGender(g.id)}
+                                                    style={{
+                                                        padding: '0.3rem 0.7rem',
+                                                        fontSize: '0.7rem',
+                                                        borderRadius: '6px',
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        backgroundColor: gender === g.id ? 'var(--neon-blue)' : 'transparent',
+                                                        color: gender === g.id ? 'white' : 'var(--light-gray)',
+                                                        fontWeight: gender === g.id ? 'bold' : 'normal',
+                                                        transition: 'all 0.3s ease'
+                                                    }}
+                                                >
+                                                    {g.label}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
 
-                                    {/* Gender Filter Toggles */}
-                                    <div style={{ display: 'flex', gap: '0.5rem', backgroundColor: 'rgba(0,0,0,0.2)', padding: '3px', borderRadius: '8px' }}>
-                                        {([
-                                            { id: 'all', label: 'Todos' },
-                                            { id: 'men', label: 'Hombres' },
-                                            { id: 'women', label: 'Mujeres' }
-                                        ] as const).map(g => (
-                                            <button
-                                                key={g.id}
-                                                onClick={() => setGender(g.id)}
-                                                style={{
-                                                    padding: '0.3rem 0.7rem',
-                                                    fontSize: '0.7rem',
-                                                    borderRadius: '6px',
-                                                    border: 'none',
-                                                    cursor: 'pointer',
-                                                    backgroundColor: gender === g.id ? 'var(--neon-blue)' : 'transparent',
-                                                    color: gender === g.id ? 'white' : 'var(--light-gray)',
-                                                    fontWeight: gender === g.id ? 'bold' : 'normal',
-                                                    transition: 'all 0.3s ease'
-                                                }}
-                                            >
-                                                {g.label}
-                                            </button>
-                                        ))}
+                                    <div style={{ overflowX: 'auto', paddingBottom: '1rem', flex: 1 }}>
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '80px repeat(24, 1fr)',
+                                            gap: '4px',
+                                            minWidth: '800px'
+                                        }}>
+                                            {/* Header: Hours */}
+                                            <div />
+                                            {Array.from({ length: 24 }).map((_, h) => (
+                                                <div key={h} style={{ fontSize: '0.65rem', color: 'var(--light-gray)', textAlign: 'center' }}>
+                                                    {h}h
+                                                </div>
+                                            ))}
+
+                                            {/* Rows: Days */}
+                                            {[
+                                                { id: 2, label: 'Lunes' },
+                                                { id: 3, label: 'Martes' },
+                                                { id: 4, label: 'Miércoles' },
+                                                { id: 5, label: 'Jueves' },
+                                                { id: 6, label: 'Viernes' },
+                                                { id: 7, label: 'Sábado' },
+                                                { id: 1, label: 'Domingo' },
+                                            ].map(day => {
+                                                const maxCount = Math.max(...metrics.visitsHeatmap.map(d => d.count), 1);
+
+                                                return (
+                                                    <React.Fragment key={day.id}>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--light-gray)', display: 'flex', alignItems: 'center' }}>
+                                                            {day.label}
+                                                        </div>
+                                                        {Array.from({ length: 24 }).map((_, h) => {
+                                                            const item = metrics.visitsHeatmap.find(d => d.dayOfWeek === day.id && d.hourOfDay === h);
+                                                            const count = item?.count || 0;
+                                                            const intensity = count / maxCount;
+
+                                                            // Emerald Ice 3-point gradient (Dark Teal -> Turquoise -> Neon Green)
+                                                            let r, g, b;
+                                                            if (intensity < 0.5) {
+                                                                const f = intensity * 2;
+                                                                // From #002b2d (0, 43, 45) to #008f95 (0, 143, 149)
+                                                                r = 0;
+                                                                g = Math.round(43 + (143 - 43) * f);
+                                                                b = Math.round(45 + (149 - 45) * f);
+                                                            } else {
+                                                                const f = (intensity - 0.5) * 2;
+                                                                // From #008f95 (0, 143, 149) to #39ff14 (57, 255, 20)
+                                                                r = Math.round(0 + 57 * f);
+                                                                g = Math.round(143 + (255 - 143) * f);
+                                                                b = Math.round(149 - 129 * f);
+                                                            }
+
+                                                            return (
+                                                                <div
+                                                                    key={h}
+                                                                    title={`${day.label} ${h}:00 - ${count} visitas`}
+                                                                    style={{
+                                                                        aspectRatio: '1/1',
+                                                                        backgroundColor: count > 0
+                                                                            ? `rgba(${r}, ${g}, ${b}, ${0.4 + intensity * 0.4})`
+                                                                            : 'rgba(255, 255, 255, 0.03)',
+                                                                        borderRadius: '2px',
+                                                                        border: count > 0 ? `1px solid rgba(${r}, ${g}, ${b}, 0.3)` : '1px solid rgba(255, 255, 255, 0.05)',
+                                                                        transition: 'all 0.2s ease',
+                                                                        cursor: 'default'
+                                                                    }}
+                                                                />
+                                                            );
+                                                        })}
+                                                    </React.Fragment>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ marginTop: '2rem', display: 'flex', alignItems: 'center', gap: '1rem', justifyContent: 'flex-end' }}>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--light-gray)' }}>Bajo (Teal)</span>
+                                        <div style={{ display: 'flex', gap: '3px' }}>
+                                            {[0, 0.25, 0.5, 0.75, 1].map(i => {
+                                                let r, g, b;
+                                                if (i < 0.5) {
+                                                    const f = i * 2;
+                                                    r = 0;
+                                                    g = Math.round(43 + (143 - 43) * f);
+                                                    b = Math.round(45 + (149 - 45) * f);
+                                                } else {
+                                                    const f = (i - 0.5) * 2;
+                                                    r = Math.round(0 + 57 * f);
+                                                    g = Math.round(143 + (255 - 143) * f);
+                                                    b = Math.round(149 - 129 * f);
+                                                }
+                                                return (
+                                                    <div key={i} style={{
+                                                        width: '12px',
+                                                        height: '12px',
+                                                        borderRadius: '2px',
+                                                        backgroundColor: `rgba(${r}, ${g}, ${b}, ${0.5 + i * 0.4})`
+                                                    }} />
+                                                );
+                                            })}
+                                        </div>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--light-gray)' }}>Pico (Verde Neón)</span>
                                     </div>
                                 </div>
 
-                                <div style={{ overflowX: 'auto', paddingBottom: '1rem' }}>
-                                    <div style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: '80px repeat(24, 1fr)',
-                                        gap: '4px',
-                                        minWidth: '800px'
-                                    }}>
-                                        {/* Header: Hours */}
-                                        <div />
-                                        {Array.from({ length: 24 }).map((_, h) => (
-                                            <div key={h} style={{ fontSize: '0.65rem', color: 'var(--light-gray)', textAlign: 'center' }}>
-                                                {h}h
-                                            </div>
-                                        ))}
+                                {/* Visits by Branch Table Card */}
+                                <div className="glass-card" style={{ padding: '1.5rem', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                                        <Building2 size={18} color="var(--neon-blue)" />
+                                        <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>Visitas por Sucursal</h3>
+                                    </div>
 
-                                        {/* Rows: Days */}
-                                        {[
-                                            { id: 2, label: 'Lunes' },
-                                            { id: 3, label: 'Martes' },
-                                            { id: 4, label: 'Miércoles' },
-                                            { id: 5, label: 'Jueves' },
-                                            { id: 6, label: 'Viernes' },
-                                            { id: 7, label: 'Sábado' },
-                                            { id: 1, label: 'Domingo' },
-                                        ].map(day => {
-                                            const maxCount = Math.max(...metrics.visitsHeatmap.map(d => d.count), 1);
-
-                                            return (
-                                                <React.Fragment key={day.id}>
-                                                    <div style={{ fontSize: '0.75rem', color: 'var(--light-gray)', display: 'flex', alignItems: 'center' }}>
-                                                        {day.label}
-                                                    </div>
-                                                    {Array.from({ length: 24 }).map((_, h) => {
-                                                        const item = metrics.visitsHeatmap.find(d => d.dayOfWeek === day.id && d.hourOfDay === h);
-                                                        const count = item?.count || 0;
-                                                        const intensity = count / maxCount;
-
-                                                        // Emerald Ice 3-point gradient (Dark Teal -> Turquoise -> Neon Green)
-                                                        let r, g, b;
-                                                        if (intensity < 0.5) {
-                                                            const f = intensity * 2;
-                                                            // From #002b2d (0, 43, 45) to #008f95 (0, 143, 149)
-                                                            r = 0;
-                                                            g = Math.round(43 + (143 - 43) * f);
-                                                            b = Math.round(45 + (149 - 45) * f);
-                                                        } else {
-                                                            const f = (intensity - 0.5) * 2;
-                                                            // From #008f95 (0, 143, 149) to #39ff14 (57, 255, 20)
-                                                            r = Math.round(0 + 57 * f);
-                                                            g = Math.round(143 + (255 - 143) * f);
-                                                            b = Math.round(149 - 129 * f);
-                                                        }
+                                    <div style={{ flex: 1, overflowY: 'auto', paddingRight: '5px' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                                    <th style={{ textAlign: 'left', padding: '0.5rem 0', color: 'var(--light-gray)', fontWeight: '500' }}>Sucursal</th>
+                                                    <th style={{ textAlign: 'right', padding: '0.5rem 0', color: 'var(--light-gray)', fontWeight: '500' }}>Visitas</th>
+                                                    <th style={{ textAlign: 'right', padding: '0.5rem 0', color: 'var(--light-gray)', fontWeight: '500' }}>%</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {metrics.branchVisits && metrics.branchVisits.length > 0 ? (
+                                                    metrics.branchVisits.map((bv, idx) => {
+                                                        const totalVisits = metrics.branchVisits.reduce((acc, b) => acc + b.visits, 0);
+                                                        const percent = totalVisits > 0 ? ((bv.visits / totalVisits) * 100).toFixed(1) : '0.0';
 
                                                         return (
-                                                            <div
-                                                                key={h}
-                                                                title={`${day.label} ${h}:00 - ${count} visitas`}
+                                                            <tr
+                                                                key={idx}
+                                                                onClick={() => bv.IdSucursal && fetchBranchDetail(bv.IdSucursal, bv.name, bv._IdProyecto)}
                                                                 style={{
-                                                                    aspectRatio: '1/1',
-                                                                    backgroundColor: count > 0
-                                                                        ? `rgba(${r}, ${g}, ${b}, ${0.4 + intensity * 0.4})`
-                                                                        : 'rgba(255, 255, 255, 0.03)',
-                                                                    borderRadius: '2px',
-                                                                    border: count > 0 ? `1px solid rgba(${r}, ${g}, ${b}, 0.3)` : '1px solid rgba(255, 255, 255, 0.05)',
-                                                                    transition: 'all 0.2s ease',
-                                                                    cursor: 'default'
+                                                                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                                                    cursor: bv.IdSucursal ? 'pointer' : 'default',
+                                                                    transition: 'background 0.2s'
                                                                 }}
-                                                            />
+                                                                className="table-row-hover"
+                                                            >
+                                                                <td style={{ padding: '0.75rem 0' }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                        <div style={{
+                                                                            width: '8px',
+                                                                            height: '8px',
+                                                                            borderRadius: '50%',
+                                                                            backgroundColor: VIBRANT_COLORS[idx % VIBRANT_COLORS.length]
+                                                                        }} />
+                                                                        {bv.name}
+                                                                    </div>
+                                                                </td>
+                                                                <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                                                                    {bv.visits}
+                                                                </td>
+                                                                <td style={{ textAlign: 'right', color: 'var(--light-gray)', fontSize: '0.75rem' }}>
+                                                                    {percent}%
+                                                                </td>
+                                                            </tr>
                                                         );
-                                                    })}
-                                                </React.Fragment>
-                                            );
-                                        })}
+                                                    })
+                                                ) : (
+                                                    <tr>
+                                                        <td colSpan={3} style={{ textAlign: 'center', padding: '2rem', opacity: 0.5 }}>No hay datos por sucursal</td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
                                     </div>
-                                </div>
 
-                                <div style={{ marginTop: '2rem', display: 'flex', alignItems: 'center', gap: '1rem', justifyContent: 'flex-end' }}>
-                                    <span style={{ fontSize: '0.7rem', color: 'var(--light-gray)' }}>Bajo (Teal)</span>
-                                    <div style={{ display: 'flex', gap: '3px' }}>
-                                        {[0, 0.25, 0.5, 0.75, 1].map(i => {
-                                            let r, g, b;
-                                            if (i < 0.5) {
-                                                const f = i * 2;
-                                                r = 0;
-                                                g = Math.round(43 + (143 - 43) * f);
-                                                b = Math.round(45 + (149 - 45) * f);
-                                            } else {
-                                                const f = (i - 0.5) * 2;
-                                                r = Math.round(0 + 57 * f);
-                                                g = Math.round(143 + (255 - 143) * f);
-                                                b = Math.round(149 - 129 * f);
-                                            }
-                                            return (
-                                                <div key={i} style={{
-                                                    width: '12px',
-                                                    height: '12px',
-                                                    borderRadius: '2px',
-                                                    backgroundColor: `rgba(${r}, ${g}, ${b}, ${0.5 + i * 0.4})`
-                                                }} />
-                                            );
-                                        })}
+                                    <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--light-gray)' }}>Total General</span>
+                                        <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--neon-blue)' }}>
+                                            {metrics.branchVisits ? metrics.branchVisits.reduce((acc, b) => acc + b.visits, 0) : 0}
+                                        </span>
                                     </div>
-                                    <span style={{ fontSize: '0.7rem', color: 'var(--light-gray)' }}>Pico (Verde Neón)</span>
                                 </div>
                             </div>
                         </div>
@@ -998,20 +1228,21 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                                 ? Object.keys(firstHistoryItem).filter(k => k !== 'date' && k !== 'label' && k !== 'count')
                                                 : [];
                                             const BRANCH_COLORS = [
-                                                'var(--neon-blue)',
-                                                'var(--neon-purple)',
-                                                'var(--neon-green)',
-                                                '#ff4d4d',
-                                                '#ffb700',
-                                                '#ff007f',
-                                                '#00ffcc',
-                                                '#ffff00'
+                                                '#00f3ff', // neon blue
+                                                '#d300ff', // neon purple
+                                                '#39ff14', // neon green
+                                                '#ff00ff', // neon pink
+                                                '#ff4d4d', // neon red
+                                                '#ffb700', // neon orange
+                                                '#ff007f', // neon deep pink
+                                                '#00ffcc', // neon mint
+                                                '#ffff00'  // neon yellow
                                             ];
 
                                             return (
                                                 <ResponsiveContainer width="100%" height="100%">
                                                     <LineChart data={metrics.activeMembersHistory} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
-                                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0, 243, 255, 0.08)" vertical={false} />
                                                         <XAxis
                                                             dataKey="label"
                                                             stroke="var(--light-gray)"
@@ -1054,7 +1285,7 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                                                                 cx={cx} 
                                                                                 cy={cy} 
                                                                                 r={4} 
-                                                                                fill="white" 
+                                                                                fill={BRANCH_COLORS[idx % BRANCH_COLORS.length]} 
                                                                                 stroke={BRANCH_COLORS[idx % BRANCH_COLORS.length]} 
                                                                                 strokeWidth={2} 
                                                                             />
@@ -1070,14 +1301,14 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                                                 type="monotone"
                                                                 dataKey="count"
                                                                 name="Total"
-                                                                stroke="rgba(255, 255, 255, 0.6)"
+                                                                stroke="#ff5a00"
                                                                 strokeDasharray="4 4"
                                                                 strokeWidth={2.5}
                                                                 dot={(props: any) => {
                                                                     const { cx, cy, payload } = props;
                                                                     const today = getTodayStr();
                                                                     if (payload.date === today) {
-                                                                        return <circle key={`total-${payload.date}`} cx={cx} cy={cy} r={5} fill="white" stroke="rgba(255, 255, 255, 0.8)" strokeWidth={2} />;
+                                                                        return <circle key={`total-${payload.date}`} cx={cx} cy={cy} r={5} fill="#ff5a00" stroke="#ff7a00" strokeWidth={2} />;
                                                                     }
                                                                     return null;
                                                                 }}
@@ -1096,8 +1327,8 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                 </div>
 
                                 <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.7rem', color: 'var(--light-gray)', opacity: 0.6 }}>
-                                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'white', border: '2px solid var(--neon-blue)' }} />
-                                    <span>El punto blanco indica el día de hoy. Hacia la derecha se muestra la proyección de retención actual.</span>
+                                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ff5a00', border: '2px solid var(--neon-blue)' }} />
+                                    <span>El punto resaltado indica el día de hoy. Hacia la derecha se muestra la proyección de retención actual.</span>
                                 </div>
 
                                 {/* Expiring Members This Month Section */}
@@ -1155,6 +1386,7 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {renderBranchCheckboxes()}
                             {/* Growth Mode Controls */}
                             <div style={{
                                 display: 'flex',
@@ -1280,6 +1512,75 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                                 ) : (
                                                     <tr>
                                                         <td colSpan={2} style={{ textAlign: 'center', padding: '2rem', opacity: 0.5 }}>No hay historial disponible</td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {/* Branch Growth Table Card */}
+                                <div className="glass-card" style={{ padding: '1.25rem', height: '420px', display: 'flex', flexDirection: 'column' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                                        <Building2 size={18} color="var(--neon-green)" />
+                                        <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>Crecimiento por Sucursal</h3>
+                                    </div>
+
+                                    <div style={{ flex: 1, overflowY: 'auto', paddingRight: '5px' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                                    <th style={{ textAlign: 'left', padding: '0.5rem 0', color: 'var(--light-gray)', fontWeight: '500' }}>Sucursal</th>
+                                                    <th style={{ textAlign: 'right', padding: '0.5rem 0', color: 'var(--light-gray)', fontWeight: '500' }}>Mes Actual</th>
+                                                    <th style={{ textAlign: 'right', padding: '0.5rem 0', color: 'var(--light-gray)', fontWeight: '500' }}>Mes Anterior</th>
+                                                    <th style={{ textAlign: 'right', padding: '0.5rem 0', color: 'var(--light-gray)', fontWeight: '500' }}>%</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {metrics.branchGrowth && metrics.branchGrowth.length > 0 ? (
+                                                    metrics.branchGrowth.map((bg, idx) => {
+                                                        const isPositive = bg.percent >= 0;
+                                                        return (
+                                                            <tr
+                                                                key={idx}
+                                                                onClick={() => bg.IdSucursal && fetchBranchDetail(bg.IdSucursal, bg.name, bg._IdProyecto)}
+                                                                style={{
+                                                                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                                                    cursor: bg.IdSucursal ? 'pointer' : 'default',
+                                                                    transition: 'background 0.2s'
+                                                                }}
+                                                                className="table-row-hover"
+                                                            >
+                                                                <td style={{ padding: '0.75rem 0' }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                        <div style={{
+                                                                            width: '8px',
+                                                                            height: '8px',
+                                                                            borderRadius: '50%',
+                                                                            backgroundColor: VIBRANT_COLORS[idx % VIBRANT_COLORS.length]
+                                                                        }} />
+                                                                        {bg.name}
+                                                                    </div>
+                                                                </td>
+                                                                <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                                                                    {formatCurrency(bg.mtd)}
+                                                                </td>
+                                                                <td style={{ textAlign: 'right', opacity: 0.8 }}>
+                                                                    {formatCurrency(bg.lmtd)}
+                                                                </td>
+                                                                <td style={{
+                                                                    textAlign: 'right',
+                                                                    fontWeight: 'bold',
+                                                                    color: isPositive ? 'var(--neon-green)' : '#ff4d4d'
+                                                                }}>
+                                                                    {isPositive ? '+' : ''}{bg.percent.toFixed(1)}%
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <tr>
+                                                        <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', opacity: 0.5 }}>No hay datos por sucursal</td>
                                                     </tr>
                                                 )}
                                             </tbody>

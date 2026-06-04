@@ -15,10 +15,14 @@ export async function GET(req: NextRequest) {
         const startDate = searchParams.get('startDate');
         const endDate = searchParams.get('endDate');
         const branchId = searchParams.get('branchId');
+        const projectIdParam = searchParams.get('projectId');
 
         if (!startDate || !endDate || !branchId) {
             return NextResponse.json({ error: 'Missing parameters: startDate, endDate, branchId are required.' }, { status: 400 });
         }
+
+        const projectIdToQuery = projectIdParam ? parseInt(projectIdParam, 10) : session.projectId;
+        const bypassVirtual = projectIdParam !== null;
 
         const detailQuery = `
             SELECT 
@@ -47,11 +51,11 @@ export async function GET(req: NextRequest) {
             ORDER BY A.FechaMovimiento DESC
         `;
 
-        const rawRows = await projectQuery(session.projectId, detailQuery, [
+        const rawRows = await projectQuery(projectIdToQuery, detailQuery, [
             `${startDate} 00:00:00`,
             `${endDate} 23:59:59`,
             parseInt(branchId)
-        ]) as any[];
+        ], undefined, bypassVirtual) as any[];
 
         // Convert binary Foto Buffer to base64 data URL for frontend display
         const rows = rawRows.map((row: any) => {
