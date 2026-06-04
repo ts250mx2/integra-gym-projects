@@ -494,6 +494,46 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
 
     return (
         <>
+            {loading && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(10, 10, 15, 0.85)',
+                    backdropFilter: 'blur(10px)',
+                    zIndex: 99999,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '1.25rem',
+                    color: 'white',
+                    pointerEvents: 'all'
+                }}>
+                    <div style={{
+                        width: '60px',
+                        height: '60px',
+                        borderRadius: '50%',
+                        border: '3px solid rgba(0, 243, 255, 0.1)',
+                        borderTop: '3px solid var(--neon-blue, #00f3ff)',
+                        animation: 'spin 1s linear infinite',
+                        boxShadow: '0 0 20px rgba(0, 243, 255, 0.25)'
+                    }} />
+                    <div style={{
+                        fontSize: '1rem',
+                        fontWeight: 'bold',
+                        color: 'var(--neon-blue, #00f3ff)',
+                        letterSpacing: '1.5px',
+                        textTransform: 'uppercase',
+                        textShadow: '0 0 10px rgba(0, 243, 255, 0.4)',
+                        animation: 'pulse 1.5s ease-in-out infinite'
+                    }}>
+                        Cargando Información...
+                    </div>
+                </div>
+            )}
             <div style={{ marginTop: '0' }}>
                 {/* Header with Title and Filters */}
                 <div style={{
