@@ -34,6 +34,7 @@ import {
     CartesianGrid,
     Tooltip,
     Legend,
+    Treemap,
     ResponsiveContainer
 } from 'recharts';
 
@@ -92,6 +93,93 @@ interface ExpiringMember {
     branch: string;
 }
 
+const VIBRANT_COLORS = [
+    '#00f3ff', // neon blue
+    '#d300ff', // neon purple
+    '#39ff14', // neon green
+    '#ff007f', // neon pink
+    '#ffb700', // neon orange
+    '#00ffcc', // neon mint
+    '#ffff00', // neon yellow
+    '#ff4d4d'  // neon red
+];
+
+interface CustomTreemapProps {
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    index?: number;
+    name?: string;
+    value?: number;
+    selectedField?: 'total' | 'operaciones' | 'ticketPromedio';
+    formatCurrency: (v: number) => string;
+}
+
+const CustomTreemapContent = (props: CustomTreemapProps) => {
+    const { x = 0, y = 0, width = 0, height = 0, index = 0, name = '', value = 0, selectedField = 'total', formatCurrency } = props;
+    const color = VIBRANT_COLORS[index % VIBRANT_COLORS.length];
+    
+    if (width < 45 || height < 30) return null;
+
+    const valStr = selectedField === 'operaciones' ? String(value) : formatCurrency(value);
+
+    return (
+        <g>
+            <rect
+                x={x}
+                y={y}
+                width={width}
+                height={height}
+                style={{
+                    fill: color,
+                    stroke: 'rgba(10, 10, 15, 0.95)',
+                    strokeWidth: 1.5,
+                    fillOpacity: 0.85,
+                }}
+            />
+            {width > 60 && height > 40 ? (
+                <>
+                    <text
+                        x={x + width / 2}
+                        y={y + height / 2 - 4}
+                        textAnchor="middle"
+                        fill="#ffffff"
+                        fontSize={11}
+                        fontWeight="bold"
+                        style={{ pointerEvents: 'none', filter: 'drop-shadow(0px 1px 2px rgba(0,0,0,0.9))' }}
+                    >
+                        {name}
+                    </text>
+                    <text
+                        x={x + width / 2}
+                        y={y + height / 2 + 10}
+                        textAnchor="middle"
+                        fill="rgba(255, 255, 255, 0.9)"
+                        fontSize={10}
+                        fontWeight="600"
+                        style={{ pointerEvents: 'none', filter: 'drop-shadow(0px 1px 2px rgba(0,0,0,0.9))' }}
+                    >
+                        {valStr}
+                    </text>
+                </>
+            ) : (
+                <text
+                    x={x + width / 2}
+                    y={y + height / 2 + 3}
+                    textAnchor="middle"
+                    fill="#ffffff"
+                    fontSize={10}
+                    fontWeight="bold"
+                    style={{ pointerEvents: 'none', filter: 'drop-shadow(0px 1px 2px rgba(0,0,0,0.9))' }}
+                >
+                    {name} ({valStr})
+                </text>
+            )}
+        </g>
+    );
+};
+
 interface Props {
     title: string;
     welcome: string;
@@ -124,7 +212,7 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
     const [startDate, setStartDate] = useState(getTodayStr());
     const [endDate, setEndDate] = useState(getTodayStr());
     const [selectedField, setSelectedField] = useState<'total' | 'operaciones' | 'ticketPromedio'>('total');
-    const [chartType, setChartType] = useState<'bar' | 'pie'>('bar');
+    const [chartType, setChartType] = useState<'bar' | 'pie' | 'treemap'>('bar');
     const [activeView, setActiveView] = useState<'branches' | 'growth' | 'visits' | 'activeMembers'>('branches');
     const [growthMode, setGrowthMode] = useState<'total' | 'mtd'>('total');
     const [gender, setGender] = useState<'all' | 'men' | 'women'>('all');
@@ -543,36 +631,29 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                 </div>
 
                                 <div style={{ display: 'flex', gap: '0.5rem', backgroundColor: 'rgba(0,0,0,0.2)', padding: '3px', borderRadius: '8px' }}>
-                                    <button
-                                        onClick={() => setChartType('bar')}
-                                        style={{
-                                            padding: '0.3rem 0.7rem',
-                                            fontSize: '0.7rem',
-                                            borderRadius: '6px',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            backgroundColor: chartType === 'bar' ? 'var(--neon-blue)' : 'transparent',
-                                            color: chartType === 'bar' ? 'white' : 'var(--light-gray)',
-                                            transition: 'all 0.3s ease'
-                                        }}
-                                    >
-                                        Barra
-                                    </button>
-                                    <button
-                                        onClick={() => setChartType('pie')}
-                                        style={{
-                                            padding: '0.3rem 0.7rem',
-                                            fontSize: '0.7rem',
-                                            borderRadius: '6px',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            backgroundColor: chartType === 'pie' ? 'var(--neon-purple)' : 'transparent',
-                                            color: chartType === 'pie' ? 'white' : 'var(--light-gray)',
-                                            transition: 'all 0.3s ease'
-                                        }}
-                                    >
-                                        Pastel
-                                    </button>
+                                    {[
+                                        { id: 'bar', label: 'Barra', color: 'var(--neon-blue)' },
+                                        { id: 'pie', label: 'Pastel', color: 'var(--neon-purple)' },
+                                        { id: 'treemap', label: 'Rectángulos', color: 'var(--neon-green)' }
+                                    ].map(opt => (
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => setChartType(opt.id as any)}
+                                            style={{
+                                                padding: '0.3rem 0.7rem',
+                                                fontSize: '0.7rem',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                backgroundColor: chartType === opt.id ? opt.color : 'transparent',
+                                                color: chartType === opt.id ? (opt.id === 'treemap' ? 'black' : 'white') : 'var(--light-gray)',
+                                                fontWeight: chartType === opt.id ? 'bold' : 'normal',
+                                                transition: 'all 0.3s ease'
+                                            }}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
@@ -580,7 +661,7 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                 {/* Chart Card */}
                                 <div className="glass-card" style={{ padding: '1.25rem', height: '420px', display: 'flex', flexDirection: 'column' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
-                                        <Building2 size={18} color={chartType === 'bar' ? 'var(--neon-blue)' : 'var(--neon-purple)'} />
+                                        <Building2 size={18} color={chartType === 'bar' ? 'var(--neon-blue)' : chartType === 'pie' ? 'var(--neon-purple)' : 'var(--neon-green)'} />
                                         <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>
                                             {selectedField === 'total' ? 'Ventas' : selectedField === 'operaciones' ? 'Operaciones' : 'Ticket Promedio'} por Sucursal
                                         </h3>
@@ -615,11 +696,11 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                                     />
                                                     <Bar dataKey={selectedField} radius={[4, 4, 0, 0]}>
                                                         {metrics.branchSales.map((entry, index) => (
-                                                            <Cell key={`cell-${index}`} fill={index % 2 === 0 ? 'var(--neon-blue)' : 'var(--neon-purple)'} />
+                                                            <Cell key={`cell-${index}`} fill={VIBRANT_COLORS[index % VIBRANT_COLORS.length]} />
                                                         ))}
                                                     </Bar>
                                                 </BarChart>
-                                            ) : (
+                                            ) : chartType === 'pie' ? (
                                                 <PieChart>
                                                     <Pie
                                                         data={metrics.branchSales}
@@ -634,7 +715,7 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                                         {metrics.branchSales.map((entry, index) => (
                                                             <Cell
                                                                 key={`cell-${index}`}
-                                                                fill={[`var(--neon-blue)`, `var(--neon-purple)`, `var(--neon-green)`, `#ff4d4d`, `#e8e8e8`][index % 5]}
+                                                                fill={VIBRANT_COLORS[index % VIBRANT_COLORS.length]}
                                                             />
                                                         ))}
                                                     </Pie>
@@ -647,6 +728,28 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                                     />
                                                     <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
                                                 </PieChart>
+                                            ) : (
+                                                <Treemap
+                                                    data={metrics.branchSales as any[]}
+                                                    dataKey={selectedField}
+                                                    aspectRatio={4 / 3}
+                                                    stroke="rgba(10, 10, 15, 0.95)"
+                                                    content={(props: any) => (
+                                                        <CustomTreemapContent
+                                                            {...props}
+                                                            selectedField={selectedField}
+                                                            formatCurrency={formatCurrency}
+                                                        />
+                                                    )}
+                                                >
+                                                    <Tooltip
+                                                        contentStyle={{ backgroundColor: 'rgba(10, 10, 15, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '0.8rem' }}
+                                                        formatter={(value: any) => [
+                                                            selectedField === 'operaciones' ? value : formatCurrency(Number(value || 0)),
+                                                            selectedField === 'total' ? 'Ventas' : selectedField === 'operaciones' ? 'Operaciones' : 'Ticket Promedio'
+                                                        ]}
+                                                    />
+                                                </Treemap>
                                             )}
                                         </ResponsiveContainer>
                                     </div>
@@ -693,9 +796,7 @@ export default function DashboardMetricsV1({ title, welcome }: Props) {
                                                                             width: '8px',
                                                                             height: '8px',
                                                                             borderRadius: '50%',
-                                                                            backgroundColor: chartType === 'pie'
-                                                                                ? [`var(--neon-blue)`, `var(--neon-purple)`, `var(--neon-green)`, `#ff4d4d`, `#e8e8e8`][idx % 5]
-                                                                                : (idx % 2 === 0 ? 'var(--neon-blue)' : 'var(--neon-purple)')
+                                                                            backgroundColor: VIBRANT_COLORS[idx % VIBRANT_COLORS.length]
                                                                         }} />
                                                                         {branch.name}
                                                                     </div>
