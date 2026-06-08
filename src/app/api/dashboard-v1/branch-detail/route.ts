@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
                 GROUP_CONCAT(COALESCE(D.DescripcionCuota, D.ConceptoCargo, '') SEPARATOR ' | ') AS Descripcion
             FROM tblMovimientos A
             LEFT JOIN tblSocios B ON A.IdSocio = B.IdSocio AND A.IdSucursalSocio = B.IdSucursal
-            LEFT JOIN tblSociosFotos C ON B.IdSocio = C.IdSocio AND B.IdSucursal = C.IdSucursal AND C.EsUltimaFoto = 1
+            LEFT JOIN tblSociosFotos C ON B.IdSocio = C.IdSocio AND C.EsUltimaFoto = 1
             INNER JOIN tblDetalleMovimientos D ON A.IdMovimiento = D.IdMovimiento AND A.IdSucursal = D.IdSucursal
             INNER JOIN tblSucursales E ON A.IdSucursal = E.IdSucursal
             WHERE A.FechaMovimiento >= ?
@@ -56,6 +56,22 @@ export async function GET(req: NextRequest) {
             `${endDate} 23:59:59`,
             parseInt(branchId)
         ], undefined, bypassVirtual) as any[];
+
+        // DEBUG: log what we got from DB
+        const withFoto = rawRows.filter((r: any) => r.Foto != null && r.Foto !== 0);
+        const sample = rawRows[0];
+        console.log('[Branch Detail DEBUG]', {
+            totalRows: rawRows.length,
+            rowsWithFoto: withFoto.length,
+            fotoType: withFoto[0] ? typeof withFoto[0].Foto : 'n/a',
+            isBuffer: withFoto[0] ? Buffer.isBuffer(withFoto[0].Foto) : 'n/a',
+            fotoConstructor: withFoto[0]?.Foto?.constructor?.name,
+            fotoLength: withFoto[0]?.Foto?.length ?? withFoto[0]?.Foto?.byteLength,
+            sampleSocio: sample?.Socio,
+            sampleCodigo: sample?.Codigo,
+            bypassVirtual,
+            projectIdToQuery,
+        });
 
         // Convert binary Foto Buffer to base64 data URL for frontend display
         const rows = rawRows.map((row: any) => {

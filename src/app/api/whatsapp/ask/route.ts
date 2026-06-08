@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '@/lib/db';
-import { getProjectConnectionPool } from '@/lib/projectDb';
+import { getProjectConnectionPoolRaw, getIntegratedPoolForProjectIds } from '@/lib/projectDb';
 import { DATABASE_SCHEMA } from '@/lib/ai/schema';
 import { buildProjectCatalog } from '@/lib/ai/catalog';
 
@@ -16,18 +16,18 @@ import { buildProjectCatalog } from '@/lib/ai/catalog';
  * RESOLUCIÓN DE PROYECTO (clave de este sistema multi-tenant):
  *   1. Valida el número en BDIntegraProjects.tblProyectosTelefonos.
  *   2. Si el número tiene UN solo proyecto → el agente responde sobre la BD de ese gimnasio.
- *   3. Si el número tiene VARIOS proyectos → devuelve un menú para que el usuario elija;
- *      la elección se recuerda por número (sesión en memoria) y a partir de ahí responde
- *      sobre el gimnasio seleccionado.
+ *   3. Si el número tiene VARIOS proyectos → MODO INTEGRADO: cada consulta se ejecuta en
+ *      la BD de TODOS los gimnasios asignados al número y los resultados se fusionan
+ *      (igual que ProyectosIntegrados en la web). No se pide elegir uno.
+ *   4. El bridge puede forzar un solo gimnasio del número pasando `projectId`.
  *
- * Body: { question, from_phone, projectId?, reset?, timestamp? }
+ * Body: { question, from_phone, projectId?, timestamp? }
  * Auth: header X-API-Key debe coincidir con WHATSAPP_API_KEY.
  *
- * Respuesta: { answer, needsSelection?, options?, project?, meta }
+ * Respuesta: { answer, project?, projects?, reportUrl?, meta }
  */
 
 const MAX_TURNS = 8;
-const PENDING_TTL_MS = 10 * 60 * 1000; // menú pendiente (en memoria) 10 min
 const ANSWER_CAP = 1500;
 
 // Modelo (configurable). Sonnet equilibra calidad de SQL y latencia.
@@ -38,7 +38,6 @@ interface WhatsAppRequest {
     question?: string;
     from_phone?: string;
     projectId?: number | string;
-    reset?: boolean;
     timestamp?: string;
 }
 
@@ -46,14 +45,8 @@ interface PhoneProject {
     IdProyecto: number;
     Proyecto: string;
     Nombre: string | null;
-    ProyectoActivo: number; // 1 = es el proyecto activo de este teléfono
     projectUuid: string;
 }
-
-// ─── Menú pendiente por número (transitorio, en memoria) ───────────────────────
-// La SELECCIÓN ACTIVA se persiste en BD (tblProyectosTelefonos.ProyectoActivo).
-interface PendingChoice { question: string; options: PhoneProject[]; expires: number; }
-const PENDING = new Map<string, PendingChoice>();
 
 // ─── Helpers de teléfono ───────────────────────────────────────────────────────
 const digits = (s: string) => (s || '').replace(/\D/g, '');
@@ -63,51 +56,17 @@ const last10 = (s: string) => digits(s).slice(-10);
 const normPhoneSql = (col: string) =>
     `RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col},' ',''),'-',''),'(',''),')',''),'+',''),'.','') , 10)`;
 
-// Asegura que exista la columna ProyectoActivo en tblProyectosTelefonos (lazy migration).
-let proyectoActivoEnsured = false;
-async function ensureProyectoActivoColumn(): Promise<void> {
-    if (proyectoActivoEnsured) return;
-    try {
-        const cols = await query("SHOW COLUMNS FROM tblProyectosTelefonos LIKE 'ProyectoActivo'") as any[];
-        if (!cols || cols.length === 0) {
-            await query('ALTER TABLE tblProyectosTelefonos ADD COLUMN ProyectoActivo TINYINT NOT NULL DEFAULT 0');
-        }
-        proyectoActivoEnsured = true;
-    } catch (e) {
-        console.error('[whatsapp/ask] no se pudo asegurar ProyectoActivo:', e);
-    }
-}
-
-// Marca el proyecto elegido como activo (=1) y los demás del mismo teléfono como inactivos (=0).
-async function setActiveProject(fromPhone: string, idProyecto: number): Promise<void> {
-    const tail = last10(fromPhone);
-    await query(
-        `UPDATE tblProyectosTelefonos
-         SET ProyectoActivo = CASE WHEN IdProyecto = ? THEN 1 ELSE 0 END
-         WHERE ${normPhoneSql('Telefono')} = ?`,
-        [idProyecto, tail]
-    );
-}
-
-// Limpia el proyecto activo del teléfono (para "cambiar de proyecto").
-async function clearActiveProject(fromPhone: string): Promise<void> {
-    const tail = last10(fromPhone);
-    await query(
-        `UPDATE tblProyectosTelefonos SET ProyectoActivo = 0 WHERE ${normPhoneSql('Telefono')} = ?`,
-        [tail]
-    );
-}
-
 // ─── Lookup de proyectos por número ────────────────────────────────────────────
 async function findProjectsForPhone(fromPhone: string): Promise<PhoneProject[]> {
     const tail = last10(fromPhone);
     if (tail.length < 8) return [];
     // Compara por los últimos 10 dígitos, ignorando lada/espacios/signos del registro.
+    // Solo gimnasios activos (Status = 0): no consultamos proyectos deshabilitados.
     const rows = await query(
-        `SELECT t.IdProyecto, t.Nombre, t.ProyectoActivo, p.Proyecto, p.UUID AS projectUuid
+        `SELECT t.IdProyecto, t.Nombre, p.Proyecto, p.UUID AS projectUuid
          FROM tblProyectosTelefonos t
          JOIN tblProyectos p ON t.IdProyecto = p.IdProyecto
-         WHERE ${normPhoneSql('t.Telefono')} = ?
+         WHERE ${normPhoneSql('t.Telefono')} = ? AND p.Status = 0
          ORDER BY p.Proyecto ASC`,
         [tail]
     ) as any[];
@@ -123,11 +82,30 @@ async function findProjectsForPhone(fromPhone: string): Promise<PhoneProject[]> 
             IdProyecto: id,
             Proyecto: String(r.Proyecto || `Proyecto ${id}`),
             Nombre: r.Nombre ?? null,
-            ProyectoActivo: Number(r.ProyectoActivo) || 0,
             projectUuid: String(r.projectUuid || ''),
         });
     }
     return out;
+}
+
+// Nota que se antepone al catálogo cuando el número tiene 2+ gimnasios, para que
+// el agente sepa que cada SELECT corre en TODAS las BDs y los resultados se fusionan.
+function integratedNote(projects: PhoneProject[]): string {
+    const names = projects.map(p => p.Proyecto).join(', ');
+    return `
+══════════════════════════════════════════════════════════════
+MODO INTEGRADO (multi-gimnasio)
+══════════════════════════════════════════════════════════════
+Este número está asignado a ${projects.length} gimnasios: ${names}.
+Cada consulta SQL que ejecutes se corre AUTOMÁTICAMENTE en la BD de CADA gimnasio
+y los resultados se combinan en uno solo (las sumas/conteos/promedios se agregan
+entre gimnasios; los listados se concatenan). Por eso:
+- Escribe UN solo SELECT estándar; el sistema lo replica en todos los gimnasios.
+- NO filtres por IDs específicos de sucursal/forma de pago/cuota: esos IDs son
+  distintos en cada gimnasio. Filtra o agrupa por NOMBRE cuando lo necesites.
+- En LISTADOS, cada fila incluye además el gimnasio de origen (campo _Proyecto);
+  agrégalo como columna en las tablas del reporte para distinguir cada gimnasio.
+- El catálogo de abajo es una referencia de estructura (tomada de "${projects[0].Proyecto}").`.trim();
 }
 
 // ─── Tool ──────────────────────────────────────────────────────────────────────
@@ -135,15 +113,21 @@ const AGENT_TOOLS: any[] = [
     {
         name: 'query_database',
         description: `Ejecuta SQL SELECT/WITH de solo lectura contra la BD MySQL del gimnasio.
-REGLAS:
-- VENTAS: exclusivamente tblMovimientos (fecha FechaMovimiento), detalle tblDetalleMovimientos, pagos tblMovimientosPagos. NUNCA tblVentas.
-- CLIENTES/SOCIOS: tblSocios. ACTIVO = Status = 0 AND FechaVencimiento >= CURDATE(). El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (tiene mayor prioridad que su correo electrónico 'CorreoElectronico'). Al listar o consultar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' como contacto principal. Si pide consulta de Hombres/Mujeres, debes consultar el campo 'Sexo' en 'tblSocios', donde: 0 o 1 = Hombre, y 2 = Mujer.
-- VISITAS de socios: tblVisitas (FechaVisita). ASISTENCIAS de empleados: tblAsistencias (FechaAsistencia). Al preguntar por la asistencia de una persona específica por su nombre (ej. "asistencia de Juan"), busca primero en 'tblSocios'; si existe, consulta en 'tblVisitas' usando 'IdSocio'; si no existe en 'tblSocios', búscalo en 'tblUsuarios' (usuarios/empleados) y si existe ahí, consulta 'tblAsistencias' usando 'IdUsuario'.
-- PRODUCTOS/membresías: tblCuotas (TipoCuota=1 membresía, =2 producto).
+REGLAS OBLIGATORIAS:
+- VENTAS: Las ventas se obtienen exclusivamente de tblMovimientos (no de tblVentas). La fecha de venta es FechaMovimiento, el detalle de ventas es tblDetalleMovimientos y las formas de pago se obtienen de tblMovimientosPagos.
+- CLIENTES: Los clientes son los socios y se obtienen siempre de la tabla tblSocios. El código del socio (CodigoSocio) se almacena y consulta físicamente en el campo 'CodigoBarras' en 'tblSocios'; usa siempre 'CodigoBarras' para buscar o referirte a este código. El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (tiene mayor prioridad que su correo electrónico 'CorreoElectronico'). Al listar o consultar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' como contacto principal. Si pide consulta de Hombres/Mujeres, debes consultar el campo 'Sexo' en 'tblSocios', donde: 0 o 1 = Hombre, y 2 = Mujer.
+- VISITAS: La tabla tblVisitas indica visitas/asistencias únicamente de socios/clientes (FechaVisita).
+- ASISTENCIAS: La tabla tblAsistencias indica las asistencias de empleados/personal (FechaAsistencia).
+- ASISTENCIA INDIVIDUAL: Al preguntar por la asistencia o accesos de una persona específica por su nombre (ej. "asistencia de Juan"), busca primero en 'tblSocios'; si existe, consulta en 'tblVisitas' usando 'IdSocio'; si no existe en 'tblSocios', búscalo en 'tblUsuarios' (usuarios/empleados) y si existe ahí, consulta su asistencia en 'tblAsistencias' relacionando por 'IdUsuario'.
+- PRODUCTOS: La tabla tblCuotas indica los productos (membresías y artículos). IdCuota equivale a IdProducto, y Cuota es el nombre del Producto.
 - PLANES Y RUTINAS: tblPlanesEntrenamiento. Si preguntan por su rutina o plan de entrenamiento, consulta 'tblPlanesEntrenamiento' y resume su plan o dale el enlace a su página (formato: /wa-plan?projectUuid=[projectUuid]&planUuid=[UUID]). Si piden diseñar una rutina en el chat, asume el rol de un Entrenador Personal de Élite y genérala directamente.
-- Status=2 = cancelado/eliminado: filtra "Status <> 2".
-- Fechas DATETIME reales: usa DATE()/MONTH()/YEAR()/BETWEEN. MySQL: LIMIT obligatorio. Nunca TOP.
-- Puedes encadenar varias llamadas para explorar antes de responder.`,
+- Fechas: son DATETIME reales. Filtra con DATE()/MONTH()/YEAR()/BETWEEN sobre la columna de fecha de cada tabla (FechaMovimiento, FechaVisita, FechaAsistencia, FechaVencimiento).
+- Status=2 = cancelado/anulado/eliminado: filtra "Status <> 2" (o "Status = 0").
+- SOCIO/CLIENTE ACTIVO = Status = 0 AND FechaVencimiento >= CURDATE(). VENCIDO = FechaVencimiento < CURDATE().
+- Cuotas/Productos: TipoCuota=1 membresía/cuota; TipoCuota=2 producto de tienda.
+- MySQL: LIMIT obligatorio en listados. Nunca TOP.
+- Usa los IDs reales del catálogo del proyecto (sucursales, formas de pago, grupos horarios, cuotas).
+- Puedes encadenar múltiples llamadas para explorar antes de responder.`,
         input_schema: {
             type: 'object',
             properties: {
@@ -297,8 +281,14 @@ ${projectCatalog}
 CÓMO RESPONDES (no negociable)
 ──────────────────────────────────────────────────────────────
 - Tienes acceso COMPLETO de SOLO LECTURA a la BD del gimnasio vía query_database.
-- Si la pregunta involucra datos (ventas, socios, visitas, asistencias, cuotas, productos, sucursales, formas de pago, fechas, montos) → USA query_database. Nunca digas "no tengo acceso".
+- NUNCA expongas nombres técnicos de tablas/columnas al usuario.
+- NUNCA digas "no tengo acceso a datos" sin antes intentar al menos una query.
+- Si la pregunta involucra datos (ventas, socios, visitas, asistencias, cuotas, productos, sucursales, formas de pago, fechas, montos) → USA query_database.
 - Encadena consultas si necesitas explorar IDs/nombres o aislar una causa.
+- Para VENTAS usa SIEMPRE tblMovimientos (FechaMovimiento, tblDetalleMovimientos, tblMovimientosPagos).
+- Para CLIENTES consulta siempre la tabla tblSocios. El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (vale más y es más importante que su correo). Al consultar o listar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' en tu SELECT. Si pide consulta de Hombres/Mujeres, debes consultar el campo 'Sexo' en 'tblSocios', donde: 0 o 1 = Hombre, y 2 = Mujer.
+- Para ASISTENCIAS de empleados usa la tabla tblAsistencias. Para visitas de socios usa tblVisitas. Al preguntar por la asistencia de una persona por su nombre (ej. "asistencia de Juan"), primero búscala en 'tblSocios' y si existe consulta en 'tblVisitas' usando 'IdSocio'; si no existe en 'tblSocios', búscala en 'tblUsuarios' y si existe ahí, consulta 'tblAsistencias' usando 'IdUsuario'.
+- Para PRODUCTOS usa tblCuotas (IdCuota es IdProducto, Cuota es Producto).
 - Para preguntas que NO son de datos (saludo, "¿qué puedes hacer?") responde directo, breve y cordial, SIN consultar.
 - Nunca inventes cifras: si una consulta sale vacía revisa el filtro (sucursal, Status, fecha, tabla correcta) y reintenta antes de decir que no hay datos.
 
@@ -354,18 +344,11 @@ async function createWithFallback(anthropic: Anthropic, params: any, primary: st
 }
 
 // Corre el loop agéntico (multi-turno) y devuelve la respuesta corta de WhatsApp.
+// Recibe el `pool` ya resuelto (individual o integrado multi-gimnasio) y el
+// catálogo ya construido, para que el caller decida el modo single/integrado.
 async function runAgent(
-    projectId: number, gymName: string, projectUuid: string, baseUrl: string, question: string
+    pool: any, projectCatalog: string, gymName: string, projectUuid: string, baseUrl: string, question: string
 ): Promise<{ answer: string; report: any | null; autoReport: boolean; rowCount: number; executedSql: string[]; model: string }> {
-    const pool = await getProjectConnectionPool(projectId);
-
-    let projectCatalog = '';
-    try {
-        projectCatalog = await buildProjectCatalog(pool, String(projectId));
-    } catch (e) {
-        console.error('[whatsapp/ask] catálogo falló:', e);
-    }
-
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const system = buildSystemPrompt(projectCatalog, gymName, projectUuid, baseUrl);
     const executedSql: string[] = [];
@@ -506,33 +489,6 @@ function computeBaseUrl(req: Request): string {
     try { return new URL(req.url).origin; } catch { return ''; }
 }
 
-// Interpreta el mensaje como una selección del menú pendiente (número o nombre).
-function resolveSelection(text: string, options: PhoneProject[]): PhoneProject | null {
-    const t = text.trim().toLowerCase();
-    // Por número (1..N)
-    const num = parseInt(t.replace(/[^\d]/g, ''), 10);
-    if (!isNaN(num) && num >= 1 && num <= options.length && /^\s*\d+\s*$/.test(t)) {
-        return options[num - 1];
-    }
-    // Por nombre (coincidencia única por substring)
-    const matches = options.filter(o =>
-        o.Proyecto.toLowerCase().includes(t) || t.includes(o.Proyecto.toLowerCase())
-    );
-    if (matches.length === 1) return matches[0];
-    return null;
-}
-
-function menuText(options: PhoneProject[]): string {
-    const lines = options.map((o, i) => `${i + 1}. ${o.Proyecto}`).join('\n');
-    return `Tu número tiene acceso a varios gimnasios. ¿Sobre cuál quieres consultar? Responde con el número:\n${lines}`;
-}
-
-function isResetCmd(text: string): boolean {
-    const t = text.trim().toLowerCase();
-    return ['cambiar', 'cambiar gimnasio', 'cambiar proyecto', 'otro gimnasio', 'otro proyecto', 'menu', 'menú', 'salir', 'reset']
-        .some(k => t === k || t.startsWith(k + ' '));
-}
-
 export async function POST(req: Request) {
     const startTime = Date.now();
     const requestId = `wa_${startTime.toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -557,20 +513,10 @@ export async function POST(req: Request) {
         if (!question) return NextResponse.json({ error: 'Falta question' }, { status: 400 });
         if (question.length > 600) return NextResponse.json({ error: 'question demasiado larga (max 600)' }, { status: 400 });
 
-        const phoneKey = last10(fromPhone);
         const baseUrl = computeBaseUrl(req);
         console.log(`[${requestId}] whatsapp ask from=${fromPhone} q="${question.slice(0, 80)}"`);
 
-        // Asegura la columna ProyectoActivo (lazy migration) antes de leer/escribir.
-        await ensureProyectoActivoColumn();
-
-        // 3. Comando de reinicio de selección ("cambiar", "menu", reset:true)
-        if (body.reset || isResetCmd(question)) {
-            await clearActiveProject(fromPhone);
-            PENDING.delete(phoneKey);
-        }
-
-        // 4. Proyectos autorizados para este número
+        // 3. Proyectos (gimnasios activos) asignados a este número
         const projects = await findProjectsForPhone(fromPhone);
         if (projects.length === 0) {
             return NextResponse.json({
@@ -578,69 +524,18 @@ export async function POST(req: Request) {
                 meta: { request_id: requestId, from_phone: fromPhone, elapsed_ms: Date.now() - startTime },
             });
         }
-        const allowedIds = new Set(projects.map(p => p.IdProyecto));
 
-        // 5. Resolver proyecto activo
-        let active: PhoneProject | null = null;
-
-        // 5a. projectId explícito desde el bridge (si pertenece al número)
-        if (body.projectId != null && allowedIds.has(Number(body.projectId))) {
-            active = projects.find(p => p.IdProyecto === Number(body.projectId)) || null;
+        // 4. El bridge puede forzar UN solo gimnasio del número pasando projectId.
+        //    Si no, con 1 proyecto se responde directo y con 2+ se consulta EN TODOS
+        //    (modo integrado): cada query corre en las "n" BDs y se fusiona el resultado.
+        let target = projects;
+        if (body.projectId != null) {
+            const only = projects.find(p => p.IdProyecto === Number(body.projectId));
+            if (only) target = [only];
         }
 
-        // 5b. Hay un menú pendiente → intentar resolver la selección
-        if (!active) {
-            const pend = PENDING.get(phoneKey);
-            if (pend && pend.expires > Date.now()) {
-                const picked = resolveSelection(question, pend.options);
-                if (picked) {
-                    PENDING.delete(phoneKey);
-                    // Si el menú nació de un "cambiar" (sin pregunta real) solo confirmamos.
-                    if (!pend.question || isResetCmd(pend.question)) {
-                        await setActiveProject(fromPhone, picked.IdProyecto);
-                        return NextResponse.json({
-                            answer: `Listo, ahora consultas sobre ${picked.Proyecto}. ¿Qué quieres saber?`,
-                            project: { idProyecto: picked.IdProyecto, nombre: picked.Proyecto },
-                            meta: { request_id: requestId, from_phone: fromPhone, elapsed_ms: Date.now() - startTime },
-                        });
-                    }
-                    // Respondemos la pregunta ORIGINAL que disparó el menú.
-                    return await answerForProject(picked, pend.question, fromPhone, requestId, startTime, true, baseUrl);
-                }
-                // No fue una selección válida → reenviar el menú con la nueva pregunta.
-                PENDING.set(phoneKey, { question, options: projects, expires: Date.now() + PENDING_TTL_MS });
-                return NextResponse.json({
-                    answer: `No reconocí esa opción. ${menuText(projects)}`,
-                    needsSelection: true,
-                    options: projects.map((p, i) => ({ index: i + 1, projectId: p.IdProyecto, name: p.Proyecto })),
-                    meta: { request_id: requestId, from_phone: fromPhone, elapsed_ms: Date.now() - startTime },
-                });
-            }
-        }
-
-        // 5c. Proyecto activo persistido en BD (ProyectoActivo = 1)
-        if (!active) {
-            active = projects.find(p => p.ProyectoActivo === 1) || null;
-        }
-
-        // 5d. Un solo proyecto → directo
-        if (!active && projects.length === 1) {
-            active = projects[0];
-        }
-
-        // 5e. Varios proyectos y sin selección → mostrar menú y guardar la pregunta
-        if (!active) {
-            PENDING.set(phoneKey, { question, options: projects, expires: Date.now() + PENDING_TTL_MS });
-            return NextResponse.json({
-                answer: menuText(projects),
-                needsSelection: true,
-                options: projects.map((p, i) => ({ index: i + 1, projectId: p.IdProyecto, name: p.Proyecto })),
-                meta: { request_id: requestId, from_phone: fromPhone, elapsed_ms: Date.now() - startTime },
-            });
-        }
-
-        // 6. Responder sobre el proyecto activo
-        return await answerForProject(active, question, fromPhone, requestId, startTime, false, baseUrl);
+        // 5. Responder (single o integrado según cuántos gimnasios queden)
+        return await answerForPhone(target, question, fromPhone, requestId, startTime, baseUrl);
 
     } catch (e: any) {
         console.error(`[${requestId}] error:`, e);
@@ -651,27 +546,46 @@ export async function POST(req: Request) {
     }
 }
 
-async function answerForProject(
-    project: PhoneProject, question: string, fromPhone: string,
-    requestId: string, startTime: number, justSelected: boolean, baseUrl: string
+// Responde la pregunta sobre los gimnasios del número:
+//   - 1 gimnasio  → consulta normal sobre su BD.
+//   - 2+ gimnasios → MODO INTEGRADO: cada SELECT corre en TODAS las BDs y los
+//     resultados se fusionan (igual que ProyectosIntegrados en la web).
+async function answerForPhone(
+    projects: PhoneProject[], question: string, fromPhone: string,
+    requestId: string, startTime: number, baseUrl: string
 ): Promise<Response> {
-    // Persiste el proyecto elegido como activo de este teléfono en BD
-    // (ProyectoActivo=1 en el elegido, 0 en los demás del mismo número).
-    await setActiveProject(fromPhone, project.IdProyecto);
+    const integrated = projects.length > 1;
+    const primary = projects[0];
+    const projectIds = projects.map(p => p.IdProyecto);
+
+    // Pool: 1 → pool individual; 2+ → pool virtual que replica y fusiona en las n BDs.
+    const pool = integrated
+        ? await getIntegratedPoolForProjectIds(projectIds)
+        : await getProjectConnectionPoolRaw(primary.IdProyecto);
+
+    // Catálogo: SIEMPRE desde un pool individual (el primario) para no fusionar las
+    // consultas del propio catálogo. En modo integrado anteponemos la nota explicativa.
+    let projectCatalog = '';
+    try {
+        const catalogPool = integrated
+            ? await getProjectConnectionPoolRaw(primary.IdProyecto)
+            : pool;
+        projectCatalog = await buildProjectCatalog(catalogPool, String(primary.IdProyecto));
+    } catch (e) {
+        console.error('[whatsapp/ask] catálogo falló:', e);
+    }
+    if (integrated) projectCatalog = `${integratedNote(projects)}\n\n${projectCatalog}`;
+
+    const gymLabel = integrated
+        ? `tus gimnasios: ${projects.map(p => p.Proyecto).join(', ')}`
+        : primary.Proyecto;
 
     const { answer, report, autoReport, rowCount, executedSql, model } = await runAgent(
-        project.IdProyecto,
-        project.Proyecto,
-        project.projectUuid,
-        baseUrl,
-        question
+        pool, projectCatalog, gymLabel, primary.projectUuid, baseUrl, question
     );
     if (executedSql.length) {
-        console.log(`[${requestId}] project=${project.IdProyecto} SQL: ${executedSql.join(' | ').slice(0, 240)}`);
+        console.log(`[${requestId}] projects=${projectIds.join(',')} SQL: ${executedSql.join(' | ').slice(0, 240)}`);
     }
-
-    // Si acaba de elegir gimnasio, prefijamos para dar contexto en el chat.
-    const prefix = justSelected ? `📍 ${project.Proyecto}\n` : '';
 
     // Si el resultado son REGISTROS CON VARIAS COLUMNAS (tabla armada automáticamente),
     // mandamos la liga DIRECTO: texto corto (resumen del modelo si es breve, o un lead
@@ -681,13 +595,13 @@ async function answerForProject(
         const shortSummary = answer && answer.length <= 180 && !answer.includes('\n') ? answer : '';
         textPart = shortSummary || `Encontré ${rowCount}${rowCount >= 200 ? '+' : ''} registros. Te dejo el detalle 👇`;
     }
-    let finalAnswer = (prefix + (textPart || 'Aquí está el detalle.')).slice(0, ANSWER_CAP + 60);
+    let finalAnswer = (textPart || 'Aquí está el detalle.').slice(0, ANSWER_CAP + 60);
 
     // Si el agente generó datos para visualizar, guardamos el reporte y agregamos el link.
     let reportUrl: string | null = null;
     if (report) {
         try {
-            const uuid = await saveReport(project, fromPhone, question, answer, report);
+            const uuid = await saveReport(primary, fromPhone, question, answer, report);
             if (baseUrl) {
                 reportUrl = `${baseUrl}/es/wa-report?r=${uuid}`;
                 finalAnswer += `\n\n📊 Ver gráfica y detalle: ${reportUrl}`;
@@ -701,7 +615,9 @@ async function answerForProject(
 
     return NextResponse.json({
         answer: finalAnswer,
-        project: { idProyecto: project.IdProyecto, nombre: project.Proyecto },
+        project: { idProyecto: primary.IdProyecto, nombre: primary.Proyecto },
+        projects: projects.map(p => ({ idProyecto: p.IdProyecto, nombre: p.Proyecto })),
+        integrated,
         reportUrl,
         meta: {
             request_id: requestId,

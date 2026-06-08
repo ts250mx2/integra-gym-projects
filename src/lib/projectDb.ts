@@ -172,7 +172,12 @@ function mergeDbResults(sql: string, allResults: any[][], projects: any[]): any[
     const groupKeySet = new Set([
         'dayofweek', 'hourofday', 'monthid', 'idsucursal', 'idproyecto', 
         'year_num', 'month_num', 'vdate', 'vDate', 'MesTexto', 'monthId', 
-        'dayOfWeek', 'hourOfDay', 'name', 'branch', 'Sucursal'
+        'dayOfWeek', 'hourOfDay', 'name', 'branch', 'Sucursal',
+        // Branch detail fields — must not be summed
+        'Foto', 'foto', 'Codigo', 'codigo', 'Folio', 'folio',
+        'FormaPago', 'formapago', 'Descripcion', 'descripcion',
+        'FolioMovimiento', 'FechaMovimiento', 'IdMovimiento',
+        'IdSucursal', 'Status', 'status'
     ]);
     
     const sampleRow = flatRows[0];
@@ -181,6 +186,8 @@ function mergeDbResults(sql: string, allResults: any[][], projects: any[]): any[
     const groupingKeys = keys.filter(k => {
         const val = sampleRow[k];
         if (typeof val === 'string' || val instanceof Date) return true;
+        // Binary/Buffer fields must not be summed — treat as grouping keys
+        if (val instanceof Uint8Array || Buffer.isBuffer(val)) return true;
         if (groupKeySet.has(k) || groupKeySet.has(k.toLowerCase())) return true;
         return false;
     });
@@ -189,7 +196,12 @@ function mergeDbResults(sql: string, allResults: any[][], projects: any[]): any[
 
     const grouped = new Map<string, any>();
     flatRows.forEach(row => {
-        const groupVal = groupingKeys.map(k => String(row[k] ?? '')).join('|');
+        const groupVal = groupingKeys.map(k => {
+            const v = row[k];
+            // For binary fields, use length as part of group key (not the actual data)
+            if (v instanceof Uint8Array || Buffer.isBuffer(v)) return `bin:${v.length}`;
+            return String(v ?? '');
+        }).join('|');
         if (!grouped.has(groupVal)) {
             const newRow: any = {};
             groupingKeys.forEach(k => { newRow[k] = row[k]; });
@@ -198,7 +210,8 @@ function mergeDbResults(sql: string, allResults: any[][], projects: any[]): any[
         }
         const accumulated = grouped.get(groupVal);
         metricKeys.forEach(k => {
-            accumulated[k] += Number(row[k] || 0);
+            const val = Number(row[k] || 0);
+            if (!isNaN(val)) accumulated[k] += val;
         });
     });
 
@@ -320,6 +333,36 @@ class VirtualPoolWrapper {
         const merged = mergeDbResults(sql, allResults, this.projects);
         return [merged, null] as any;
     }
+}
+
+/**
+ * Construye un pool "integrado" para un conjunto EXPLÍCITO de proyectos, sin
+ * depender de la cookie de sesión (pensado para webservices como WhatsApp, que
+ * se autentican por API key y no tienen sesión).
+ *
+ * - 1 proyecto  → pool normal de ese proyecto.
+ * - 2+ proyectos → VirtualPoolWrapper: replica cada SELECT en la BD de cada
+ *   gimnasio y fusiona los resultados en memoria (mismo comportamiento que el
+ *   modo ProyectosIntegrados de la web).
+ */
+export async function getIntegratedPoolForProjectIds(projectIds: number[]): Promise<any> {
+    const unique = [...new Set(projectIds.filter((id) => Number.isFinite(id) && id > 0))];
+    if (unique.length === 0) throw new Error('getIntegratedPoolForProjectIds: sin proyectos');
+    if (unique.length === 1) return await getProjectConnectionPoolRaw(unique[0]);
+
+    const placeholders = unique.map(() => '?').join(',');
+    const userProjects = await query(
+        `SELECT IdProyecto, BaseDatos, Servidor, UsuarioBD, PasswordBD, Proyecto
+         FROM tblProyectos WHERE IdProyecto IN (${placeholders}) AND Status = 0`,
+        unique
+    ) as any[];
+
+    if (userProjects.length === 0) throw new Error('getIntegratedPoolForProjectIds: proyectos no encontrados');
+    if (userProjects.length === 1) {
+        const only = userProjects[0];
+        return await getProjectConnectionPoolRaw(only.IdProyecto, only);
+    }
+    return new VirtualPoolWrapper(userProjects[0].IdProyecto, userProjects) as any;
 }
 
 export async function getProjectConnectionPool(projectId: number, metadata?: ProjectMetadata, bypassVirtual: boolean = false) {

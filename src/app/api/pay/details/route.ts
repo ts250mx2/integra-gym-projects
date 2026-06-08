@@ -44,10 +44,10 @@ export async function GET(req: NextRequest) {
 
         // Fetch Member Photo
         let memberPhoto = null;
-        if (solicitation.IdSocio && solicitation.idSucursalSocio) {
+        if (solicitation.IdSocio) {
             const [photoRows]: any = await pool.execute(
-                'SELECT Foto FROM tblSociosFotos WHERE IdSocio = ? AND IdSucursal = ? AND EsUltimaFoto = 1',
-                [solicitation.IdSocio, solicitation.idSucursalSocio]
+                'SELECT Foto FROM tblSociosFotos WHERE IdSocio = ? AND EsUltimaFoto = 1',
+                [solicitation.IdSocio]
             );
             if (photoRows.length > 0 && photoRows[0].Foto) {
                 const fotoBuffer = photoRows[0].Foto;
