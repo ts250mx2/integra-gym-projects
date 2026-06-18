@@ -9,7 +9,8 @@ import {
     ChevronRight,
     Users,
     Building2,
-    LayoutDashboard
+    LayoutDashboard,
+    BellRing
 } from 'lucide-react';
 import packageJson from '../../package.json';
 
@@ -70,6 +71,7 @@ export default function AdminDashboardSidebar({ isCollapsed }: Props) {
             items: [
                 { href: '/admin/dashboard/config/projects', icon: <Building2 size={18} />, label: t('projects') || 'Proyectos' },
                 { href: '/admin/dashboard/config/users', icon: <Users size={18} />, label: t('users') || 'Usuarios' },
+                { href: '/admin/dashboard/config/alerts', icon: <BellRing size={18} />, label: t('alerts') || 'Alertas' },
             ]
         }
     ];

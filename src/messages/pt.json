@@ -81,7 +81,8 @@
         "membersAnalytics": "Análises de Sócios",
         "purchasesAnalytics": "Análises de Compras",
         "aiAgent": "Agente IA",
-        "inventory": "Inventários"
+        "inventory": "Inventários",
+        "alerts": "Alertas"
     },
     "Providers": {
         "title": "Fornecedores",

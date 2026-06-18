@@ -86,7 +86,8 @@
         "aiAgent": "AI Agent",
         "inventory": "Inventory",
         "purchases": "Purchases",
-        "projects": "Projects"
+        "projects": "Projects",
+        "alerts": "Alerts"
     },
     "Providers": {
         "title": "Providers",

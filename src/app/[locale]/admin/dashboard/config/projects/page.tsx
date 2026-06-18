@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Building2, Settings2, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, Building2, Settings2, Search, BellRing } from 'lucide-react';
 import { getCountries, getCountryCallingCode } from 'react-phone-number-input';
 import { languages } from '@/i18n/locales';
 import Select, { components, SingleValueProps, OptionProps } from 'react-select';
 import CreatableSelect from 'react-select/creatable';
+import ProjectAlertsModal from '@/components/admin/ProjectAlertsModal';
 
 const getFlagUrl = (countryCode: string) => `https://purecatamphetamine.github.io/country-flag-icons/3x2/${countryCode.toUpperCase()}.svg`;
 const countryCodes = getCountries();
@@ -94,6 +95,9 @@ export default function AdminProjectsPage() {
         Idioma: 'es',
         Pais: 'MX'
     });
+
+    // Alerts Modal State
+    const [alertsProject, setAlertsProject] = useState<Project | null>(null);
 
     // Parameters Modal State
     const [isParamsModalOpen, setIsParamsModalOpen] = useState(false);
@@ -559,6 +563,13 @@ export default function AdminProjectsPage() {
                                         </td>
                                         <td style={{ padding: '0.6rem 0.8rem', textAlign: 'right' }}>
                                             <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                                                <button
+                                                    onClick={() => setAlertsProject(project)}
+                                                    className="btn-action-blue"
+                                                    title="Configurar Alertas"
+                                                >
+                                                    <BellRing size={16} />
+                                                </button>
                                                 <button
                                                     onClick={() => handleOpenParams(project)}
                                                     className="btn-action-green"
@@ -1119,6 +1130,14 @@ export default function AdminProjectsPage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Alerts Modal */}
+            {alertsProject && (
+                <ProjectAlertsModal
+                    project={alertsProject}
+                    onClose={() => setAlertsProject(null)}
+                />
             )}
         </div>
     );
