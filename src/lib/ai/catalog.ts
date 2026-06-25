@@ -72,7 +72,7 @@ export async function buildProjectCatalog(
         sucursales, formasPago, puestos, gruposHorarios, clases,
         cuotasAll, productosAll, salesSource, sociosResumen, visitasRango,
     ] = await Promise.all([
-        safeRows(pool, `SELECT IdSucursal, Sucursal, Clave FROM tblSucursales WHERE COALESCE(Status,0) <> 2 ORDER BY IdSucursal`),
+        safeRows(pool, `SELECT IdSucursal, Sucursal FROM tblSucursales WHERE COALESCE(Status,0) <> 2 ORDER BY IdSucursal`),
         safeRows(pool, `SELECT IdFormaPago, FormaPago, Comision FROM tblFormasPago WHERE COALESCE(Status,0) <> 2 ORDER BY IdFormaPago`),
         safeRows(pool, `SELECT IdPuesto, Puesto FROM tblPuestos WHERE COALESCE(Status,0) <> 2 ORDER BY IdPuesto`),
         safeRows(pool, `SELECT IdGrupoHorario, GrupoHorario FROM tblGruposHorarios WHERE COALESCE(Status,0) <> 2 ORDER BY IdGrupoHorario`),
@@ -112,8 +112,8 @@ SOCIOS / CLIENTES (snapshot actual): total ${Number(soc.total) || 0} · activos 
 (Nota: Clientes equivale a Socios y se obtienen de tblSocios)
 VISITAS registradas: ${Number(vis.n) || 0}${Number(vis.n) ? ` · ${fmtDate(vis.minF)} → ${fmtDate(vis.maxF)}` : ''}
 
-SUCURSALES (IdSucursal → nombre · clave):
-${listDim(sucursales, 'IdSucursal', 'Sucursal', r => `· ${String(r.Clave ?? '').trim()}`)}
+SUCURSALES (IdSucursal → nombre):
+${listDim(sucursales, 'IdSucursal', 'Sucursal')}
 
 FORMAS DE PAGO (IdFormaPago → nombre · comisión):
 ${listDim(formasPago, 'IdFormaPago', 'FormaPago', r => `· ${Number(r.Comision) || 0}%`)}

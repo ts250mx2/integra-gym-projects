@@ -105,15 +105,28 @@ entre gimnasios; los listados se concatenan). Por eso:
 - NO filtres por IDs específicos de sucursal/forma de pago/cuota: esos IDs son
   distintos en cada gimnasio. Filtra o agrupa por NOMBRE cuando lo necesites.
 
-CÓMO LIMITAR A UN SOLO GIMNASIO (OBLIGATORIO cuando el usuario nombra uno):
-- Si el usuario pide datos de UN gimnasio en particular (p. ej. "ventas de ${ejemplo}"),
-  antepón al SELECT el comentario /*ONLY_PROJECT:Nombre*/ con el nombre EXACTO del
-  gimnasio; el sistema ejecutará la consulta SOLO en la BD de ese gimnasio.
-  Ejemplo: /*ONLY_PROJECT:${ejemplo}*/ SELECT SUM(Total) AS Total FROM tblMovimientos WHERE Status <> 2 AND YEAR(FechaMovimiento)=2026 AND MONTH(FechaMovimiento)=6
-  Gimnasios válidos para este número: ${names}.
-- La ÚNICA forma de acotar a un gimnasio es ese comentario. NUNCA lo intentes dentro
-  del SQL (no uses WHERE Proyecto=... ni WHERE _Proyecto=...): el nombre del gimnasio
-  NO es una columna de la BD y la consulta fallará.
+CÓMO ACOTAR — distingue SUCURSAL (una sede) vs GIMNASIO (un proyecto completo):
+
+▸ UNA SUCURSAL ESPECÍFICA (una sola sede; p. ej. las que salen al desglosar "por sucursal"):
+  Filtra por NOMBRE de sucursal con LIKE, uniendo tblSucursales. Corre en TODAS las BDs y
+  solo devuelve la sede cuyo nombre coincide (las demás no aportan filas). Usa LIKE '%texto%'
+  porque los nombres pueden traer espacios o prefijos (ej. "CLANDESTINO     STOA").
+  Ejemplo: SELECT SUM(mv.Total) AS Total
+           FROM tblMovimientos mv JOIN tblSucursales su ON mv.IdSucursal = su.IdSucursal
+           WHERE mv.Status <> 2 AND su.Sucursal LIKE '%Stoa%'
+             AND YEAR(mv.FechaMovimiento)=2026 AND MONTH(mv.FechaMovimiento)=6
+  Si no conoces el nombre exacto, primero localízala:
+           SELECT IdSucursal, Sucursal FROM tblSucursales WHERE Sucursal LIKE '%Stoa%'
+
+▸ UN GIMNASIO COMPLETO (todas las sucursales de un proyecto):
+  Antepón al SELECT el comentario /*ONLY_PROJECT:Nombre EXACTO del gimnasio*/ y el sistema
+  ejecutará SOLO en la BD de ese gimnasio. Gimnasios válidos: ${names}.
+  Ejemplo: /*ONLY_PROJECT:${ejemplo}*/ SELECT SUM(Total) AS Total FROM tblMovimientos WHERE Status <> 2
+  NUNCA filtres el gimnasio dentro del SQL (no WHERE Proyecto=... ni WHERE _Proyecto=...):
+  el nombre del gimnasio NO es columna; la ÚNICA forma es ese comentario.
+
+NOTA: si el usuario nombra una SEDE/SUCURSAL (no todo el gimnasio), usa la PRIMERA vía
+(LIKE por sucursal), no ONLY_PROJECT — así no incluyes otras sucursales del mismo proyecto.
 
 SOBRE EL CAMPO _Proyecto:
 - _Proyecto es SOLO una etiqueta que el sistema agrega a cada fila del RESULTADO para

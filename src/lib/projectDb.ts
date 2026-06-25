@@ -294,18 +294,29 @@ class VirtualPoolWrapper {
         if (!m) return this.projects;
         const wanted = normalizeProjectName(m[1]);
         if (!wanted) return this.projects;
-        const matches = this.projects.filter((p) => {
-            const n = normalizeProjectName(p.Proyecto);
-            return n === wanted || n.includes(wanted) || wanted.includes(n);
-        });
-        if (matches.length === 0) {
-            const names = this.projects.map((p) => p.Proyecto).join(', ');
-            throw new Error(
-                `No se encontró el gimnasio "${m[1].trim()}" entre los asignados a este número. ` +
-                `Gimnasios válidos: ${names}.`
-            );
+
+        // 1) Coincidencia EXACTA (normalizada): preferida y sin ambigüedad. Es clave cuando
+        //    un nombre es PREFIJO de otro (p. ej. "Clandestino Gym" es prefijo de
+        //    "Clandestino Gym Stoa (Lazaro Cardenas)"): sin esto se colaban los dos proyectos.
+        const exact = this.projects.filter((p) => normalizeProjectName(p.Proyecto) === wanted);
+        if (exact.length) return exact;
+
+        // 2) Sin exacta: gimnasios cuyo nombre CONTIENE lo pedido (p. ej. pedir "stoa"
+        //    encuentra "clandestino gym stoa ..."). NUNCA al revés (wanted.includes(name)):
+        //    eso captura el nombre corto que es prefijo de varios.
+        const contains = this.projects.filter((p) => normalizeProjectName(p.Proyecto).includes(wanted));
+        if (contains.length === 1) return contains;
+        if (contains.length > 1) {
+            // Ambiguo: el término aparece en varios → toma el de nombre más corto (el más cercano).
+            contains.sort((a, b) => normalizeProjectName(a.Proyecto).length - normalizeProjectName(b.Proyecto).length);
+            return [contains[0]];
         }
-        return matches;
+
+        const names = this.projects.map((p) => p.Proyecto).join(', ');
+        throw new Error(
+            `No se encontró el gimnasio "${m[1].trim()}" entre los asignados a este número. ` +
+            `Gimnasios válidos: ${names}.`
+        );
     }
 
     // Ejecuta el SELECT en cada gimnasio objetivo (en paralelo) y fusiona en memoria.
