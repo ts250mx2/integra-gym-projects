@@ -92,6 +92,7 @@ async function findProjectsForPhone(fromPhone: string): Promise<PhoneProject[]> 
 // el agente sepa que cada SELECT corre en TODAS las BDs y los resultados se fusionan.
 function integratedNote(projects: PhoneProject[]): string {
     const names = projects.map(p => p.Proyecto).join(', ');
+    const ejemplo = projects[0].Proyecto;
     return `
 ══════════════════════════════════════════════════════════════
 MODO INTEGRADO (multi-gimnasio)
@@ -103,9 +104,23 @@ entre gimnasios; los listados se concatenan). Por eso:
 - Escribe UN solo SELECT estándar; el sistema lo replica en todos los gimnasios.
 - NO filtres por IDs específicos de sucursal/forma de pago/cuota: esos IDs son
   distintos en cada gimnasio. Filtra o agrupa por NOMBRE cuando lo necesites.
-- En LISTADOS, cada fila incluye además el gimnasio de origen (campo _Proyecto);
-  agrégalo como columna en las tablas del reporte para distinguir cada gimnasio.
-- El catálogo de abajo es una referencia de estructura (tomada de "${projects[0].Proyecto}").`.trim();
+
+CÓMO LIMITAR A UN SOLO GIMNASIO (OBLIGATORIO cuando el usuario nombra uno):
+- Si el usuario pide datos de UN gimnasio en particular (p. ej. "ventas de ${ejemplo}"),
+  antepón al SELECT el comentario /*ONLY_PROJECT:Nombre*/ con el nombre EXACTO del
+  gimnasio; el sistema ejecutará la consulta SOLO en la BD de ese gimnasio.
+  Ejemplo: /*ONLY_PROJECT:${ejemplo}*/ SELECT SUM(Total) AS Total FROM tblMovimientos WHERE Status <> 2 AND YEAR(FechaMovimiento)=2026 AND MONTH(FechaMovimiento)=6
+  Gimnasios válidos para este número: ${names}.
+- La ÚNICA forma de acotar a un gimnasio es ese comentario. NUNCA lo intentes dentro
+  del SQL (no uses WHERE Proyecto=... ni WHERE _Proyecto=...): el nombre del gimnasio
+  NO es una columna de la BD y la consulta fallará.
+
+SOBRE EL CAMPO _Proyecto:
+- _Proyecto es SOLO una etiqueta que el sistema agrega a cada fila del RESULTADO para
+  indicar de qué gimnasio salió. NO existe en la base de datos: nunca lo pongas en
+  WHERE, HAVING, GROUP BY ni JOIN (causa error). Úsalo solo como columna de salida en
+  los listados del reporte para distinguir cada gimnasio.
+- El catálogo de abajo es una referencia de estructura (tomada de "${ejemplo}").`.trim();
 }
 
 // ─── Tool ──────────────────────────────────────────────────────────────────────
@@ -159,8 +174,9 @@ Usa esta herramienta cuando el usuario pida registrar, diseñar o ver una rutina
 ];
 
 async function executeQuery(pool: any, sql: string): Promise<any[]> {
-    const trimmed = sql.toLowerCase().trim();
-    if (!trimmed.startsWith('select') && !trimmed.startsWith('with')) {
+    // Tolera un comentario inicial /*ONLY_PROJECT:...*/ antes del SELECT/WITH.
+    const head = sql.toLowerCase().trim().replace(/^(?:\/\*[\s\S]*?\*\/\s*)*/, '');
+    if (!head.startsWith('select') && !head.startsWith('with')) {
         throw new Error('Solo se permiten consultas SELECT / WITH.');
     }
     const [rows] = await pool.query(sql);
@@ -291,6 +307,7 @@ CÓMO RESPONDES (no negociable)
 - Para PRODUCTOS usa tblCuotas (IdCuota es IdProducto, Cuota es Producto).
 - Para preguntas que NO son de datos (saludo, "¿qué puedes hacer?") responde directo, breve y cordial, SIN consultar.
 - Nunca inventes cifras: si una consulta sale vacía revisa el filtro (sucursal, Status, fecha, tabla correcta) y reintenta antes de decir que no hay datos.
+- Si una consulta DEVUELVE ERROR (te llega is_error) o sigue vacía tras revisar el filtro y reintentar, di la VERDAD de forma breve ("No encontré ventas de X en ese período" o "Tuve un problema técnico al consultar; ¿lo intentamos de nuevo?"). Está PROHIBIDO inventar excusas tipo "el sistema está lento, intenta más tarde" o prometer datos "en unos minutos": eso confunde al usuario.
 
 ──────────────────────────────────────────────────────────────
 FORMATO WHATSAPP (obligatorio)

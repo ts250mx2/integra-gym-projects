@@ -266,6 +266,16 @@ function mergeDbResults(sql: string, allResults: any[][], projects: any[]): any[
     return mergedRows;
 }
 
+// Normaliza nombres de gimnasio para comparar (sin acentos, minúsculas, sin espacios extra).
+function normalizeProjectName(s: string): string {
+    return (s || '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase().trim();
+}
+
+// Detección de lectura tolerante a un comentario inicial /*...*/ (p. ej. /*ONLY_PROJECT:X*/).
+const READ_RE = /^\s*(?:\/\*[\s\S]*?\*\/\s*)*(select|with)/i;
+
 // Wrapper to intercept queries and execute across all user-assigned databases
 class VirtualPoolWrapper {
     private primaryProjectId: number;
@@ -276,62 +286,79 @@ class VirtualPoolWrapper {
         this.projects = projects;
     }
 
-    async query(sql: string, params?: any[]): Promise<[any[], any]> {
-        const isRead = /^\s*(select|with)/i.test(sql);
-        if (!isRead) {
-            const primaryPool = await getProjectConnectionPoolRaw(this.primaryProjectId);
-            return await primaryPool.query(sql, params);
+    // Acota la consulta a un solo gimnasio cuando el SQL trae /*ONLY_PROJECT:Nombre*/.
+    // Si el nombre no coincide con ninguno de los gimnasios del número, lanza un error
+    // claro (con los nombres válidos) en vez de correr en TODOS o devolver vacío.
+    private resolveTargets(sql: string): any[] {
+        const m = sql.match(/\/\*ONLY_PROJECT:([^*]*)\*\//i);
+        if (!m) return this.projects;
+        const wanted = normalizeProjectName(m[1]);
+        if (!wanted) return this.projects;
+        const matches = this.projects.filter((p) => {
+            const n = normalizeProjectName(p.Proyecto);
+            return n === wanted || n.includes(wanted) || wanted.includes(n);
+        });
+        if (matches.length === 0) {
+            const names = this.projects.map((p) => p.Proyecto).join(', ');
+            throw new Error(
+                `No se encontró el gimnasio "${m[1].trim()}" entre los asignados a este número. ` +
+                `Gimnasios válidos: ${names}.`
+            );
         }
+        return matches;
+    }
+
+    // Ejecuta el SELECT en cada gimnasio objetivo (en paralelo) y fusiona en memoria.
+    // Si TODAS las BDs objetivo fallan, propaga el error (en vez de devolver vacío
+    // silencioso) para que el agente lo reciba como error real y no invente excusas.
+    private async runRead(sql: string, params: any[] | undefined, mode: 'query' | 'execute'): Promise<[any[], any]> {
+        const targets = this.resolveTargets(sql);
 
         let branchIdParam: string | undefined = undefined;
-        const match = sql.match(/\/\*SELECTED_BRANCHES:([^*]+)\*\//);
-        if (match) {
-            branchIdParam = match[1];
+        const bm = sql.match(/\/\*SELECTED_BRANCHES:([^*]+)\*\//);
+        if (bm) branchIdParam = bm[1];
+
+        // Quita la directiva ONLY_PROJECT antes de enviar el SQL a MySQL.
+        const cleanSql = sql.replace(/\/\*ONLY_PROJECT:[^*]*\*\//gi, '');
+
+        const settled = await Promise.all(targets.map(async (proj) => {
+            try {
+                const filteredSql = applyBranchFilters(cleanSql, proj.IdProyecto, branchIdParam);
+                const pool = await getProjectConnectionPoolRaw(proj.IdProyecto, proj);
+                const [results] = mode === 'execute'
+                    ? await pool.execute(filteredSql, params)
+                    : await pool.query(filteredSql, params);
+                return { rows: results as any[], error: null as any };
+            } catch (err: any) {
+                console.error(`VirtualPool ${mode} error on project ${proj.IdProyecto}:`, err);
+                return { rows: [] as any[], error: err };
+            }
+        }));
+
+        const errors = settled.filter((s) => s.error).map((s) => s.error);
+        if (targets.length > 0 && errors.length === targets.length) {
+            const msg = errors[0]?.sqlMessage || errors[0]?.message || 'error desconocido';
+            throw new Error(`La consulta falló en todos los gimnasios: ${msg}`);
         }
 
-        const promises = this.projects.map(async (proj) => {
-            try {
-                const filteredSql = applyBranchFilters(sql, proj.IdProyecto, branchIdParam);
-                const pool = await getProjectConnectionPoolRaw(proj.IdProyecto, proj);
-                const [results] = await pool.query(filteredSql, params);
-                return results as any[];
-            } catch (err) {
-                console.error(`VirtualPool query error on project ${proj.IdProyecto}:`, err);
-                return [];
-            }
-        });
-        const allResults = await Promise.all(promises);
-        const merged = mergeDbResults(sql, allResults, this.projects);
+        const merged = mergeDbResults(cleanSql, settled.map((s) => s.rows), targets);
         return [merged, null] as any;
     }
 
+    async query(sql: string, params?: any[]): Promise<[any[], any]> {
+        if (!READ_RE.test(sql)) {
+            const primaryPool = await getProjectConnectionPoolRaw(this.primaryProjectId);
+            return await primaryPool.query(sql, params);
+        }
+        return this.runRead(sql, params, 'query');
+    }
+
     async execute(sql: string, params?: any[]): Promise<[any[], any]> {
-        const isRead = /^\s*(select|with)/i.test(sql);
-        if (!isRead) {
+        if (!READ_RE.test(sql)) {
             const primaryPool = await getProjectConnectionPoolRaw(this.primaryProjectId);
             return await primaryPool.execute(sql, params);
         }
-
-        let branchIdParam: string | undefined = undefined;
-        const match = sql.match(/\/\*SELECTED_BRANCHES:([^*]+)\*\//);
-        if (match) {
-            branchIdParam = match[1];
-        }
-
-        const promises = this.projects.map(async (proj) => {
-            try {
-                const filteredSql = applyBranchFilters(sql, proj.IdProyecto, branchIdParam);
-                const pool = await getProjectConnectionPoolRaw(proj.IdProyecto, proj);
-                const [results] = await pool.execute(filteredSql, params);
-                return results as any[];
-            } catch (err) {
-                console.error(`VirtualPool execute error on project ${proj.IdProyecto}:`, err);
-                return [];
-            }
-        });
-        const allResults = await Promise.all(promises);
-        const merged = mergeDbResults(sql, allResults, this.projects);
-        return [merged, null] as any;
+        return this.runRead(sql, params, 'execute');
     }
 }
 
