@@ -172,6 +172,24 @@ tblFormasPago: IdFormaPago, FormaPago(nombre: Efectivo, Tarjeta, Transferencia�
   • Costo por comisiones = SUM(Pago * Comision/100).
 
 ───────────────────────────────────────────────────────────
+CAJA — APERTURAS Y CIERRES (cortes de caja / turnos)
+───────────────────────────────────────────────────────────
+tblAperturasCierres: IdApertura, IdSucursal, IdCajero(→tblUsuarios, cajero del turno),
+           IdSupervisorApertura, IdSupervisorCierre(→tblUsuarios), FondoCaja(fondo inicial),
+           FechaApertura(datetime), FechaCierre(datetime), Efectivo, TotalVentas, Observaciones
+  • Cada fila es un TURNO de caja en una sucursal. Está ABIERTA / sin cortar cuando
+    IdSupervisorCierre = 0 (el corte aún no se firma); cerrada cuando IdSupervisorCierre > 0.
+    Mientras una apertura esté abierta, sus ventas son PRELIMINARES (no definitivas).
+  • ⚠️ TotalVentas y Efectivo NO son confiables (suelen venir en 0). Las VENTAS REALES de una
+    apertura se SUMAN de tblMovimientos por IdApertura:
+        SELECT SUM(mv.Total) FROM tblMovimientos mv
+        WHERE mv.IdApertura = <IdApertura> AND mv.IdSucursal = <IdSucursal> AND mv.Status <> 2
+  • Cajero = IdCajero → tblUsuarios.Usuario. Para un período, filtra por FechaApertura.
+  NOTA: en gimnasios con POS web esta tabla puede tener otras columnas
+  (IdUsuarioApertura, IdUsuarioCorte, FechaCorte). Si una columna no existe, revisa con
+  SHOW COLUMNS FROM tblAperturasCierres y ajusta.
+
+───────────────────────────────────────────────────────────
 GRUPOS HORARIOS, CLASES Y EVENTOS
 ───────────────────────────────────────────────────────────
 tblGruposHorarios: IdGrupoHorario, GrupoHorario(nombre), Status
@@ -210,6 +228,8 @@ JOINS CLAVE
 ───────────────────────────────────────────────────────────
 tblMovimientos.IdMovimiento      → tblDetalleMovimientos.IdMovimiento (+ IdSucursal)
 tblMovimientos.IdMovimiento      → tblMovimientosPagos.IdMovimiento (+ IdSucursal)
+tblMovimientos.IdApertura        → tblAperturasCierres.IdApertura (+ IdSucursal)  [corte de caja]
+tblAperturasCierres.IdCajero / IdSupervisorApertura / IdSupervisorCierre → tblUsuarios.IdUsuario
 tblMovimientosPagos.IdFormaPago  → tblFormasPago.IdFormaPago
 tblDetalleMovimientos.IdCuota    → tblCuotas.IdCuota
 tblMovimientos.IdSocio / tblVisitas.IdSocio  → tblSocios.IdSocio

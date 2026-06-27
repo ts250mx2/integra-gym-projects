@@ -133,6 +133,16 @@ SOBRE EL CAMPO _Proyecto:
   indicar de qué gimnasio salió. NO existe en la base de datos: nunca lo pongas en
   WHERE, HAVING, GROUP BY ni JOIN (causa error). Úsalo solo como columna de salida en
   los listados del reporte para distinguir cada gimnasio.
+
+SUBTOTAL POR GIMNASIO (datos auditables) y PROMEDIOS:
+- Para TOTALES o desgloses combinados, antepón /*PER_PROJECT*/ al SELECT: el sistema devuelve
+  una fila POR GIMNASIO (con su _Proyecto) en vez de un solo número fusionado. Úsalo para que el
+  reporte muestre el subtotal de CADA gimnasio + una fila TOTAL; así el usuario verifica que la
+  suma cuadra. Incluye _Proyecto como columna "Gimnasio" en la tabla.
+  Ejemplo: /*PER_PROJECT*/ SELECT SUM(Total) AS Total, COUNT(*) AS Tickets FROM tblMovimientos
+           WHERE Status<>2 AND YEAR(FechaMovimiento)=2026 AND MONTH(FechaMovimiento)=6
+- NO uses AVG() en consultas combinadas (se sumaría entre gimnasios y saldría inflado): trae
+  SUM y COUNT y calcula el promedio como SUM/COUNT.
 - El catálogo de abajo es una referencia de estructura (tomada de "${ejemplo}").`.trim();
 }
 
@@ -196,7 +206,7 @@ async function executeQuery(pool: any, sql: string): Promise<any[]> {
     return rows as any[];
 }
 
-async function runToolBlocks(pool: any, content: any[], executedSql: string[], capture?: { lastRows: any[] }): Promise<any[]> {
+async function runToolBlocks(pool: any, content: any[], executedSql: string[], capture?: { lastRows: any[]; warnings?: Set<string> }): Promise<any[]> {
     const toolResults: any[] = [];
     for (const block of content) {
         if (block.type !== 'tool_use') continue;
@@ -245,6 +255,12 @@ async function runToolBlocks(pool: any, content: any[], executedSql: string[], c
             // Guarda las filas de la última consulta con resultados (para armar
             // automáticamente la tabla del reporte si el modelo no emite el bloque).
             if (capture && Array.isArray(rows) && rows.length > 0) capture.lastRows = rows;
+            // Si el pool integrado marcó gimnasios caídos, acumúlalos para avisar "datos incompletos".
+            const meta = (rows as any)?.__meta;
+            if (capture && Array.isArray(meta?.failedProjects) && meta.failedProjects.length) {
+                capture.warnings = capture.warnings || new Set<string>();
+                for (const n of meta.failedProjects) capture.warnings.add(String(n));
+            }
             const resultStr = JSON.stringify(rows);
             toolResults.push({
                 type: 'tool_result',
@@ -318,6 +334,8 @@ CÓMO RESPONDES (no negociable)
 - Para CLIENTES consulta siempre la tabla tblSocios. El contacto prioritario de un socio es siempre su teléfono en la columna 'OtroTelefono' (vale más y es más importante que su correo). Al consultar o listar socios, especialmente los que vencen o vencidos, incluye SIEMPRE la columna 'OtroTelefono' en tu SELECT. Si pide consulta de Hombres/Mujeres, debes consultar el campo 'Sexo' en 'tblSocios', donde: 0 o 1 = Hombre, y 2 = Mujer.
 - Para ASISTENCIAS de empleados usa la tabla tblAsistencias. Para visitas de socios usa tblVisitas. Al preguntar por la asistencia de una persona por su nombre (ej. "asistencia de Juan"), primero búscala en 'tblSocios' y si existe consulta en 'tblVisitas' usando 'IdSocio'; si no existe en 'tblSocios', búscala en 'tblUsuarios' y si existe ahí, consulta 'tblAsistencias' usando 'IdUsuario'.
 - Para PRODUCTOS usa tblCuotas (IdCuota es IdProducto, Cuota es Producto).
+- Para CAJA / CORTES / APERTURAS usa tblAperturasCierres; las VENTAS reales de cada apertura se SUMAN de tblMovimientos por IdApertura (la columna TotalVentas no es confiable, suele venir en 0).
+- CAJA ABIERTA = datos PRELIMINARES: una apertura está abierta/sin cortar cuando IdSupervisorCierre = 0. Cuando reportes VENTAS o movimientos cuyo período incluye una apertura abierta (verifica con un JOIN/EXISTS a tblAperturasCierres por IdApertura: ¿hay alguna con IdSupervisorCierre = 0?), antepón al mensaje "⚠️ incompleto: [sucursal/gimnasio] aún con caja abierta, las cifras no son definitivas hasta el corte." En modo integrado nómbralo por gimnasio (_Proyecto).
 - Para preguntas que NO son de datos (saludo, "¿qué puedes hacer?") responde directo, breve y cordial, SIN consultar.
 - Nunca inventes cifras: si una consulta sale vacía revisa el filtro (sucursal, Status, fecha, tabla correcta) y reintenta antes de decir que no hay datos.
 - Si una consulta DEVUELVE ERROR (te llega is_error) o sigue vacía tras revisar el filtro y reintentar, di la VERDAD de forma breve ("No encontré ventas de X en ese período" o "Tuve un problema técnico al consultar; ¿lo intentamos de nuevo?"). Está PROHIBIDO inventar excusas tipo "el sistema está lento, intenta más tarde" o prometer datos "en unos minutos": eso confunde al usuario.
@@ -352,6 +370,19 @@ REGLAS DEL BLOQUE report:
 - Incluye "tables", "charts" o ambos. Omite el bloque por completo SOLO para respuestas de un único número, saludos o conceptos.
 - NO menciones el link ni el bloque en el texto; el sistema agrega el enlace automáticamente.
 
+PLANTILLAS (úsalas cuando apliquen):
+- VENTAS POR SUCURSAL / desglose de ventas: el bloque report DEBE traer (1) una tabla con una
+  fila por sucursal y columnas ["Sucursal","Total","Tickets","Ticket prom."] MÁS una fila final
+  ["TOTAL", …] que sume todo; y (2) una gráfica "bar" con "format":"currency" del Total por
+  sucursal. Calcula Total=SUM(Total), Tickets=COUNT(*), Ticket prom.=Total/Tickets. El texto de
+  WhatsApp solo resume (total global y la sucursal líder).
+- APERTURAS DE CAJA / CORTES: tabla desde tblAperturasCierres con columnas
+  ["Sucursal","Cajero","Apertura","Cierre","Fondo","Ventas","Estado"], donde "Ventas" son las
+  SUMADAS de tblMovimientos por IdApertura (NO la columna TotalVentas) y "Estado" es "ABIERTA" si
+  IdSupervisorCierre = 0, si no "cerrada". Si son varias, agrega una gráfica "bar" de Ventas por
+  cajero o por apertura. Acota a un período razonable (hoy/ayer/este mes) y a las más recientes si
+  son muchas; en el texto resume cuántas aperturas, cuántas siguen abiertas y el total vendido.
+
 Devuelve SOLO el texto (y, si aplica, el bloque \`\`\`report al final). Sin prefijos.`;
 }
 
@@ -378,7 +409,7 @@ async function createWithFallback(anthropic: Anthropic, params: any, primary: st
 // catálogo ya construido, para que el caller decida el modo single/integrado.
 async function runAgent(
     pool: any, projectCatalog: string, gymName: string, projectUuid: string, baseUrl: string, question: string
-): Promise<{ answer: string; report: any | null; autoReport: boolean; rowCount: number; executedSql: string[]; model: string }> {
+): Promise<{ answer: string; report: any | null; autoReport: boolean; rowCount: number; executedSql: string[]; model: string; warnings: string[] }> {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const system = buildSystemPrompt(projectCatalog, gymName, projectUuid, baseUrl);
     const executedSql: string[] = [];
@@ -387,7 +418,7 @@ async function runAgent(
     let finalText = '';
     let modelUsed = WA_MODEL;
     let turns = 0;
-    const capture = { lastRows: [] as any[] };
+    const capture = { lastRows: [] as any[], warnings: new Set<string>() };
 
     while (turns < MAX_TURNS) {
         turns++;
@@ -420,7 +451,7 @@ async function runAgent(
         const fb = buildFallbackReport(capture.lastRows);
         if (fb) { report = fb; autoReport = true; rowCount = Math.min(capture.lastRows.length, 200); }
     }
-    return { answer: ex.clean.slice(0, ANSWER_CAP), report, autoReport, rowCount, executedSql, model: modelUsed };
+    return { answer: ex.clean.slice(0, ANSWER_CAP), report, autoReport, rowCount, executedSql, model: modelUsed, warnings: Array.from(capture.warnings) };
 }
 
 // Arma un reporte de tabla a partir de las filas crudas de una consulta cuando el
@@ -610,7 +641,7 @@ async function answerForPhone(
         ? `tus gimnasios: ${projects.map(p => p.Proyecto).join(', ')}`
         : primary.Proyecto;
 
-    const { answer, report, autoReport, rowCount, executedSql, model } = await runAgent(
+    const { answer, report, autoReport, rowCount, executedSql, model, warnings } = await runAgent(
         pool, projectCatalog, gymLabel, primary.projectUuid, baseUrl, question
     );
     if (executedSql.length) {
@@ -626,6 +657,12 @@ async function answerForPhone(
         textPart = shortSummary || `Encontré ${rowCount}${rowCount >= 200 ? '+' : ''} registros. Te dejo el detalle 👇`;
     }
     let finalAnswer = (textPart || 'Aquí está el detalle.').slice(0, ANSWER_CAP + 60);
+
+    // Aviso de datos incompletos: si alguna BD de gimnasio no respondió, el total puede
+    // excluir ese gimnasio — se lo decimos al usuario en vez de presentarlo como completo.
+    if (warnings && warnings.length) {
+        finalAnswer = `⚠️ incompleto: faltó ${warnings.join(', ')} (su sistema no respondió), el total puede no incluirlo.\n\n${finalAnswer}`;
+    }
 
     // Si el agente generó datos para visualizar, guardamos el reporte y agregamos el link.
     let reportUrl: string | null = null;

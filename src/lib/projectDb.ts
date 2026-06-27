@@ -130,6 +130,39 @@ export function applyBranchFilters(sql: string, projectId: number, branchIdParam
         .replace(/\/\*BRANCH_FILTER_V\*\//g, inClauseV);
 }
 
+// Aplica el ORDER BY y el LIMIT del SQL al resultado YA fusionado, para que el "top N"
+// y el ordenamiento sean correctos a nivel GLOBAL (no por cada BD por separado).
+function sortByOrderBy(rows: any[], sql: string): void {
+    const orderMatch = sql.match(/order\s+by\s+([\s\S]+?)(?:\s+limit\s+\d+)?\s*$/i);
+    if (!orderMatch) return;
+    const clauses = orderMatch[1].split(',').map((c) => c.trim()).filter(Boolean);
+    if (!clauses.length) return;
+    rows.sort((a, b) => {
+        for (const clause of clauses) {
+            const parts = clause.split(/\s+/);
+            const field = (parts[0].split('.').pop() || '').replace(/\(|\)/g, '').trim();
+            const dir = (parts[1] || 'asc').toLowerCase();
+            const valA = a[field]; const valB = b[field];
+            if (valA === undefined || valB === undefined) continue;
+            if (typeof valA === 'string') {
+                const cmp = valA.localeCompare(valB);
+                if (cmp !== 0) return dir === 'desc' ? -cmp : cmp;
+            } else {
+                const numA = Number(valA) || 0; const numB = Number(valB) || 0;
+                if (numA !== numB) return dir === 'desc' ? numB - numA : numA - numB;
+            }
+        }
+        return 0;
+    });
+}
+
+function finalizeRows(rows: any[], sql: string): any[] {
+    sortByOrderBy(rows, sql);
+    const m = sql.match(/\blimit\s+(\d+)/i);
+    const limit = m ? parseInt(m[1], 10) : null;
+    return (limit != null && rows.length > limit) ? rows.slice(0, limit) : rows;
+}
+
 // Helper to unifiy / aggregate results from multiple databases in memory
 function mergeDbResults(sql: string, allResults: any[][], projects: any[]): any[] {
     const flatRows: any[] = [];
@@ -153,19 +186,17 @@ function mergeDbResults(sql: string, allResults: any[][], projects: any[]): any[
 
 
     if (!isAggregation) {
-        if (isExpiring) {
+        // Sin ORDER BY explícito pero es consulta de vencimientos: ordena por fecha.
+        if (isExpiring && !/order\s+by/i.test(lowerSql)) {
             flatRows.sort((a, b) => {
                 const dateA = a.expiry || a.expiryDate || a.FechaVencimiento || '';
                 const dateB = b.expiry || b.expiryDate || b.FechaVencimiento || '';
                 return String(dateA).localeCompare(String(dateB));
             });
-            const limitMatch = sql.match(/limit\s+(\d+)/i);
-            if (limitMatch) {
-                const limit = parseInt(limitMatch[1]);
-                return flatRows.slice(0, limit);
-            }
         }
-        return flatRows;
+        // Re-aplica ORDER BY/LIMIT a nivel global (antes el LIMIT solo se respetaba en vencimientos,
+        // así que un "top N" combinado podía traer hasta N×gimnasios filas y sin ordenar).
+        return finalizeRows(flatRows, sql);
     }
 
     // Grouping / Aggregate logic
@@ -191,6 +222,11 @@ function mergeDbResults(sql: string, allResults: any[][], projects: any[]): any[
         if (groupKeySet.has(k) || groupKeySet.has(k.toLowerCase())) return true;
         return false;
     });
+
+    // /*PER_PROJECT*/ → NO fusionar entre gimnasios: conserva el gimnasio de origen como
+    // dimensión (una fila por gimnasio × grupo), para mostrar el subtotal de CADA gimnasio
+    // (auditable) además del gran total.
+    if (/\/\*PER_PROJECT\*\//i.test(sql)) groupingKeys.unshift('_Proyecto');
 
     const metricKeys = keys.filter(k => !groupingKeys.includes(k));
 
@@ -233,37 +269,7 @@ function mergeDbResults(sql: string, allResults: any[][], projects: any[]): any[
         });
     });
 
-    // Sorting
-    if (lowerSql.includes('order by')) {
-        const orderMatch = sql.match(/order\s+by\s+([^;]+)/i);
-        if (orderMatch) {
-            const clauses = orderMatch[1].split(',').map(c => c.trim());
-            mergedRows.sort((a, b) => {
-                for (const clause of clauses) {
-                    const parts = clause.split(/\s+/);
-                    let field = parts[0].split('.').pop() || '';
-                    const dir = (parts[1] || 'asc').toLowerCase();
-                    field = field.replace(/\(|\)/g, '').trim();
-                    
-                    const valA = a[field];
-                    const valB = b[field];
-                    if (valA === undefined || valB === undefined) continue;
-
-                    if (typeof valA === 'string') {
-                        const cmp = valA.localeCompare(valB);
-                        if (cmp !== 0) return dir === 'desc' ? -cmp : cmp;
-                    } else {
-                        const numA = Number(valA) || 0;
-                        const numB = Number(valB) || 0;
-                        if (numA !== numB) return dir === 'desc' ? numB - numA : numA - numB;
-                    }
-                }
-                return 0;
-            });
-        }
-    }
-
-    return mergedRows;
+    return finalizeRows(mergedRows, sql);
 }
 
 // Normaliza nombres de gimnasio para comparar (sin acentos, minúsculas, sin espacios extra).
@@ -353,6 +359,12 @@ class VirtualPoolWrapper {
         }
 
         const merged = mergeDbResults(cleanSql, settled.map((s) => s.rows), targets);
+        // Marca qué gimnasios fallaron (sin lanzar, porque otros sí respondieron) para que la
+        // capa de arriba avise "datos incompletos" en vez de dar un total al que le falta un gym.
+        const failedProjects = targets.filter((_, i) => settled[i].error).map((p) => p.Proyecto);
+        if (failedProjects.length) {
+            try { Object.defineProperty(merged, '__meta', { value: { failedProjects }, enumerable: false, configurable: true }); } catch { /* noop */ }
+        }
         return [merged, null] as any;
     }
 
