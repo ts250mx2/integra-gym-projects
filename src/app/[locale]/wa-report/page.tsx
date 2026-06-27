@@ -14,6 +14,7 @@ interface ReportData {
     fecha?: string;
     tables: TableSpec[];
     charts: any[];
+    insights?: string[];
 }
 
 const ACCENT = '#00f3ff';
@@ -102,6 +103,7 @@ function ReportContent() {
                 answer: data.answer,
                 charts: data.charts || [],
                 tables: data.tables || [],
+                insights: data.insights || [],
             });
         } catch (e) {
             console.error('No se pudo exportar el PDF:', e);
@@ -155,6 +157,16 @@ function ReportContent() {
                         {data.answer && (
                             <div style={{ background: PANEL, border: `1px solid ${BORDER}`, borderRadius: 14, padding: '14px 16px', fontSize: 14, lineHeight: 1.6, marginBottom: 20, whiteSpace: 'pre-wrap' }}>
                                 {data.answer}
+                            </div>
+                        )}
+
+                        {/* Sugerencias / insights */}
+                        {Array.isArray(data.insights) && data.insights.length > 0 && (
+                            <div style={{ background: 'rgba(0,243,255,0.06)', border: `1px solid ${ACCENT}`, borderRadius: 14, padding: '14px 16px', marginBottom: 20 }}>
+                                <div style={{ fontWeight: 800, color: ACCENT, fontSize: 13, marginBottom: 8, letterSpacing: 0.3 }}>💡 SUGERENCIAS</div>
+                                <ul style={{ margin: 0, paddingLeft: 18, color: TXT, fontSize: 14, lineHeight: 1.7 }}>
+                                    {data.insights.map((s, i) => (<li key={i}>{s}</li>))}
+                                </ul>
                             </div>
                         )}
 

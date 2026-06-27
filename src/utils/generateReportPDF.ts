@@ -37,6 +37,7 @@ export interface ReportPdfData {
     answer?: string;
     charts: ReportPdfChart[];
     tables: ReportPdfTable[];
+    insights?: string[];
 }
 
 function cleanText(s: string): string {
@@ -230,6 +231,20 @@ export function generateReportPDF(data: ReportPdfData): void {
             for (const line of aLines) { ensure(14); doc.text(line, margin, y); y += 14; }
             y += 10;
         }
+    }
+
+    // Sugerencias / insights
+    if (Array.isArray(data.insights) && data.insights.length) {
+        ensure(20);
+        doc.setTextColor(...BRAND); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+        doc.text('Sugerencias', margin, y); y += 16;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...DARK);
+        for (const s of data.insights) {
+            const lines = doc.splitTextToSize('•  ' + cleanText(String(s)), contentW) as string[];
+            for (const line of lines) { ensure(13); doc.text(line, margin, y); y += 13; }
+            y += 2;
+        }
+        y += 8;
     }
 
     // Gráficas (dibujadas nativamente)

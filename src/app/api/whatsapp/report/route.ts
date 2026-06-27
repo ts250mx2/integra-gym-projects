@@ -39,6 +39,7 @@ export async function GET(req: Request) {
             fecha: row.FechaAct,
             tables: Array.isArray(datos.tables) ? datos.tables : [],
             charts: Array.isArray(datos.charts) ? datos.charts : [],
+            insights: Array.isArray(datos.insights) ? datos.insights : [],
         });
     } catch (e: any) {
         console.error('[whatsapp/report] error:', e);

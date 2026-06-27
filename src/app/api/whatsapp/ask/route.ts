@@ -358,7 +358,7 @@ evolución por día o mes, comparativa de períodos), agrega AL FINAL del mensaj
 bloque cercado \`\`\`report con un JSON en UNA sola línea con esta forma:
 
 \`\`\`report
-{"title":"Ventas por forma de pago (mayo 2026)","tables":[{"title":"Detalle","columns":["Forma de pago","Total","Tickets"],"rows":[["Efectivo",138200,210],["Tarjeta",61777,84]]}],"charts":[{"type":"bar","title":"Ventas por forma de pago","format":"currency","data":[{"name":"Efectivo","value":138200},{"name":"Tarjeta","value":61777}]}]}
+{"title":"Ventas de junio 2026","tables":[{"title":"Por sucursal","columns":["Sucursal","Total","Tickets","Ticket prom."],"rows":[["Mictlan",767678,3688,208.16],["Pantitlán",695892,3396,204.92],["TOTAL",1463570,7084,206.6]]}],"charts":[{"type":"bar","title":"Ventas por sucursal","format":"currency","data":[{"name":"Mictlan","value":767678},{"name":"Pantitlán","value":695892}]},{"type":"line","title":"Ventas por día","format":"currency","data":[{"name":"01","value":48000},{"name":"02","value":51200}]}],"insights":["Mictlan aporta el 52% del total del mes.","Ticket promedio ($206) estable vs mayo.","Pantitlán bajó el último fin de semana: revisa staffing/promos."]}
 \`\`\`
 
 REGLAS DEL BLOQUE report:
@@ -366,16 +366,24 @@ REGLAS DEL BLOQUE report:
 - En esos casos el TEXTO de WhatsApp es SOLO un resumen de 1-2 frases (cuántos son, total, lo más relevante). El detalle completo va en la tabla, que el usuario abrirá con el link que agrega el sistema.
 - El TEXTO va ANTES del bloque y debe entenderse SOLO; el bloque es el detalle ampliado.
 - "tables": [{"title","columns":[...],"rows":[[...]]}]. Incluye las columnas útiles (p. ej. para socios: Nombre, Teléfono (OtroTelefono), Vence). Números crudos.
-- "charts": "type" bar|line|pie, "format" currency|number|percent, "data":[{"name","value","value2"?}], "seriesLabels"?:[..]. Máx ~12 puntos, valores crudos (sin $, comas ni %).
-- Incluye "tables", "charts" o ambos. Omite el bloque por completo SOLO para respuestas de un único número, saludos o conceptos.
+- "charts": "type" bar|line|pie, "format" currency|number|percent, "data":[{"name","value","value2"?}], "seriesLabels"?:[..]. Valores crudos (sin $, comas ni %). Máx ~12 puntos en bar/pie; las líneas de tiempo (por día) pueden tener más.
+- "insights": 2-4 SUGERENCIAS u observaciones accionables en español (comparativa vs período anterior, sucursal/día líder o rezagado, formas de pago, productos top, socios por vencer/cobranza). Frases cortas y concretas, útiles para decidir.
+- Incluye "tables", "charts" o ambos (idealmente con "insights"). Omite el bloque por completo SOLO para respuestas de un único número, saludos o conceptos.
 - NO menciones el link ni el bloque en el texto; el sistema agrega el enlace automáticamente.
 
 PLANTILLAS (úsalas cuando apliquen):
-- VENTAS POR SUCURSAL / desglose de ventas: el bloque report DEBE traer (1) una tabla con una
-  fila por sucursal y columnas ["Sucursal","Total","Tickets","Ticket prom."] MÁS una fila final
-  ["TOTAL", …] que sume todo; y (2) una gráfica "bar" con "format":"currency" del Total por
-  sucursal. Calcula Total=SUM(Total), Tickets=COUNT(*), Ticket prom.=Total/Tickets. El texto de
-  WhatsApp solo resume (total global y la sucursal líder).
+- VENTAS sin sucursal específica (p. ej. "ventas de junio", "¿cuánto vendí hoy?"): SIEMPRE
+  desglosa por sucursal — NUNCA respondas solo el número total. El bloque report DEBE traer:
+  (1) tabla con una fila por sucursal, columnas ["Sucursal","Total","Tickets","Ticket prom."],
+      MÁS una fila final ["TOTAL", …] que sume todo (Total=SUM(Total), Tickets=COUNT(*),
+      Ticket prom.=Total/Tickets);
+  (2) gráfica "bar" (format currency) del Total por sucursal;
+  (3) si el período abarca varios días, una gráfica "line" de ventas por día (evolución);
+  (4) cuando aporte valor, también desglose por forma de pago (tabla o "pie") y/o top productos;
+  (5) "insights": 2-4 sugerencias accionables (sucursal líder/rezagada, comparativa vs período
+      anterior, día o forma de pago top, oportunidades de cobranza/promoción).
+  En modo integrado usa /*PER_PROJECT*/ y añade la columna "Gimnasio" en la tabla. El texto de
+  WhatsApp solo resume (total global y la sucursal líder); el detalle rico va en el reporte.
 - APERTURAS DE CAJA / CORTES: tabla desde tblAperturasCierres con columnas
   ["Sucursal","Cajero","Apertura","Cierre","Fondo","Ventas","Estado"], donde "Ventas" son las
   SUMADAS de tblMovimientos por IdApertura (NO la columna TotalVentas) y "Estado" es "ABIERTA" si
@@ -423,7 +431,7 @@ async function runAgent(
     while (turns < MAX_TURNS) {
         turns++;
         const { msg, model } = await createWithFallback(anthropic, {
-            max_tokens: 1500,
+            max_tokens: 2200,
             system,
             tools: AGENT_TOOLS,
             tool_choice: { type: 'auto' },
@@ -529,6 +537,7 @@ async function saveReport(
         title: report?.title || null,
         tables: Array.isArray(report?.tables) ? report.tables : [],
         charts: Array.isArray(report?.charts) ? report.charts : [],
+        insights: Array.isArray(report?.insights) ? report.insights.map((s: any) => String(s)).slice(0, 6) : [],
     });
     await query(
         `INSERT INTO tblWhatsappReportes (UUID, IdProyecto, Telefono, Pregunta, Respuesta, Titulo, Datos, FechaAct)
