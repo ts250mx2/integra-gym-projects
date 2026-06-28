@@ -79,7 +79,7 @@ function ReportContent() {
         if (!r) { setError('Falta el identificador del reporte.'); setLoading(false); return; }
         fetch(`/api/whatsapp/report?r=${encodeURIComponent(r)}`)
             .then(async (res) => {
-                if (!res.ok) throw new Error(res.status === 404 ? 'Este reporte no existe o expiró.' : 'No se pudo cargar el reporte.');
+                if (!res.ok) throw new Error(res.status === 404 ? 'Este link de reporte no es válido o ya expiró. Pídele el reporte de nuevo al asistente por WhatsApp y abre el link más reciente que te envíe.' : 'No se pudo cargar el reporte.');
                 return res.json();
             })
             .then((d: ReportData) => setData(d))
