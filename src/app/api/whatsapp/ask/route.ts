@@ -369,7 +369,7 @@ REGLAS DEL BLOQUE report:
 - "charts": "type" bar|line|pie, "format" currency|number|percent, "data":[{"name","value","value2"?}], "seriesLabels"?:[..]. Valores crudos (sin $, comas ni %). Máx ~12 puntos en bar/pie; las líneas de tiempo (por día) pueden tener más.
 - "insights": 2-4 SUGERENCIAS u observaciones accionables en español (comparativa vs período anterior, sucursal/día líder o rezagado, formas de pago, productos top, socios por vencer/cobranza). Frases cortas y concretas, útiles para decidir.
 - Incluye "tables", "charts" o ambos (idealmente con "insights"). Omite el bloque por completo SOLO para respuestas de un único número, saludos o conceptos.
-- NO menciones el link ni el bloque en el texto; el sistema agrega el enlace automáticamente.
+- NUNCA escribas una URL/link ni inventes un ID de reporte (p. ej. "weekly-2026-..."): cualquier link que escribas dará 404. El sistema agrega automáticamente el ÚNICO link válido (con UUID real). Tampoco menciones el bloque report.
 
 PLANTILLAS (úsalas cuando apliquen):
 - VENTAS sin sucursal específica (p. ej. "ventas de junio", "¿cuánto vendí hoy?"): SIEMPRE
@@ -508,6 +508,15 @@ function extractReport(text: string): { clean: string; report: any | null } {
     clean = clean.replace(/```[\s\S]*?```/g, '').trim();
     // WhatsApp es TEXTO PLANO: quita markdown que el modelo a veces deja (**negrita**, __, #).
     clean = clean.replace(/\*\*+/g, '').replace(/__+/g, '').replace(/^#{1,6}\s+/gm, '').trim();
+    // El modelo NO debe escribir links de reporte (a veces inventa slugs como "weekly-..."
+    // que dan 404). El sistema agrega el ÚNICO link válido (UUID); quita cualquier URL de
+    // wa-report que el modelo haya metido en el texto, junto a su frase introductoria.
+    clean = clean
+        .replace(/\[([^\]]*)\]\((?:https?:\/\/)?[^)]*wa-report[^)]*\)/gi, '$1')        // [texto](url) -> texto
+        .replace(/[^\n.]*?(?:https?:\/\/)?[^\s]*wa-report[^\s]*\.?/gi, '')              // frase + URL de wa-report
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
     // Sólo es válido si trae tablas o gráficas con contenido.
     const hasTables = report && Array.isArray(report.tables) && report.tables.length > 0;
     const hasCharts = report && Array.isArray(report.charts) && report.charts.length > 0;
