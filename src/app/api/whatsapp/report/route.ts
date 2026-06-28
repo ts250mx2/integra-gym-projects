@@ -29,7 +29,17 @@ export async function GET(req: Request) {
 
         const row = rows[0];
         let datos: any = {};
-        try { datos = JSON.parse(row.Datos || '{}'); } catch { datos = {}; }
+        try {
+            datos = JSON.parse(row.Datos || '{}');
+        } catch {
+            // Reporte guardado con caracteres de control (corrupción latin1): quítalos y reintenta,
+            // así los reportes viejos rotos también se pueden mostrar en vez de quedar en blanco.
+            try {
+                datos = JSON.parse(String(row.Datos || '{}').replace(/[\u0000-\u001F\u007F-\u009F]/g, ' '));
+            } catch {
+                datos = {};
+            }
+        }
 
         return NextResponse.json({
             title: row.Titulo || datos.title || null,

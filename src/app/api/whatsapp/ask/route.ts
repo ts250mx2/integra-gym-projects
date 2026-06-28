@@ -343,8 +343,8 @@ CÓMO RESPONDES (no negociable)
 ──────────────────────────────────────────────────────────────
 FORMATO WHATSAPP (obligatorio)
 ──────────────────────────────────────────────────────────────
-- Respuesta CORTA: 1 a 5 oraciones (target ~300 chars, máx ~700).
-- TEXTO PLANO: nada de markdown, tablas, viñetas con # o **. Emojis ligeros está bien.
+- CORTA y escaneable (target ~350 chars, máx ~700). Para VENTAS usa el formato ESTRUCTURADO de la plantilla (aviso si caja abierta + total + desglose por sucursal + 1 sugerencia).
+- TEXTO PLANO: nada de markdown (**negrita**, #, tablas). Viñetas con "• " y emojis ligeros SÍ están bien.
 - Cifras en MXN con coma de miles ($14,820.00). Tutea, tono humano y directo.
 - Si hay una comparativa relevante (vs mes pasado) o algo accionable (socios por vencer, asistencia cayendo), méncionalo en una frase.
 - Responde SIEMPRE en español.
@@ -363,7 +363,7 @@ bloque cercado \`\`\`report con un JSON en UNA sola línea con esta forma:
 
 REGLAS DEL BLOQUE report:
 - OBLIGATORIO cuando la respuesta sea una LISTA de varios registros (socios que vencen/vencidos con su teléfono, top productos, ventas por día, movimientos, socios por sucursal, etc.): SIEMPRE genera "tables" con TODAS las filas relevantes. NO metas la lista completa en el texto de WhatsApp.
-- En esos casos el TEXTO de WhatsApp es SOLO un resumen de 1-2 frases (cuántos son, total, lo más relevante). El detalle completo va en la tabla, que el usuario abrirá con el link que agrega el sistema.
+- En esos casos el TEXTO de WhatsApp es un resumen breve (cuántos son, total, lo más relevante) y el detalle completo va en la tabla. EXCEPCIÓN VENTAS: sí incluye el desglose por sucursal y 1 sugerencia en el texto (ver plantilla).
 - El TEXTO va ANTES del bloque y debe entenderse SOLO; el bloque es el detalle ampliado.
 - "tables": [{"title","columns":[...],"rows":[[...]]}]. Incluye las columnas útiles (p. ej. para socios: Nombre, Teléfono (OtroTelefono), Vence). Números crudos.
 - "charts": "type" bar|line|pie, "format" currency|number|percent, "data":[{"name","value","value2"?}], "seriesLabels"?:[..]. Valores crudos (sin $, comas ni %). Máx ~12 puntos en bar/pie; las líneas de tiempo (por día) pueden tener más.
@@ -382,8 +382,13 @@ PLANTILLAS (úsalas cuando apliquen):
   (4) cuando aporte valor, también desglose por forma de pago (tabla o "pie") y/o top productos;
   (5) "insights": 2-4 sugerencias accionables (sucursal líder/rezagada, comparativa vs período
       anterior, día o forma de pago top, oportunidades de cobranza/promoción).
-  En modo integrado usa /*PER_PROJECT*/ y añade la columna "Gimnasio" en la tabla. El texto de
-  WhatsApp solo resume (total global y la sucursal líder); el detalle rico va en el reporte.
+  En modo integrado usa /*PER_PROJECT*/ y añade la columna "Gimnasio" en la tabla.
+  TEXTO de WhatsApp para VENTAS (texto plano, estructurado así, sin markdown):
+    · Si hay caja abierta, primera línea: "⚠️ <sede/gimnasio> con caja abierta: cifras preliminares hasta el corte."
+    · "Ventas de <período>: $<total> · <N> tickets · prom. $<ticket prom.>"
+    · Desglose top sucursales (máx ~5), una por línea: "• <Sucursal>: $<total> (<tickets>)"
+    · "💡 <la sugerencia más accionable, una sola línea>"
+    NO escribas el link (lo agrega el sistema). El reporte (tabla + gráficas + todas las sugerencias) va aparte en la página.
 - APERTURAS DE CAJA / CORTES: tabla desde tblAperturasCierres con columnas
   ["Sucursal","Cajero","Apertura","Cierre","Fondo","Ventas","Estado"], donde "Ventas" son las
   SUMADAS de tblMovimientos por IdApertura (NO la columna TotalVentas) y "Estado" es "ABIERTA" si
@@ -501,6 +506,8 @@ function extractReport(text: string): { clean: string; report: any | null } {
     }
     // Quita cualquier otro bloque cercado que se haya colado (no va en WhatsApp).
     clean = clean.replace(/```[\s\S]*?```/g, '').trim();
+    // WhatsApp es TEXTO PLANO: quita markdown que el modelo a veces deja (**negrita**, __, #).
+    clean = clean.replace(/\*\*+/g, '').replace(/__+/g, '').replace(/^#{1,6}\s+/gm, '').trim();
     // Sólo es válido si trae tablas o gráficas con contenido.
     const hasTables = report && Array.isArray(report.tables) && report.tables.length > 0;
     const hasCharts = report && Array.isArray(report.charts) && report.charts.length > 0;
@@ -528,21 +535,51 @@ async function ensureReportTable(): Promise<void> {
     reportTableEnsured = true;
 }
 
+// Limpia un string para guardarlo en la BD latin1 SIN romper el JSON ni corromperse:
+// reemplaza puntuación unicode (em-dash, comillas curvas, …) por equivalentes ASCII,
+// quita caracteres de control (rompen JSON) y cualquier carácter fuera de latin1 (emojis).
+// El bug original: el modelo metía "—" en los insights y la conexión latin1 lo convertía
+// en un carácter de control → JSON.parse fallaba → la página quedaba en blanco.
+function cleanReportString(s: string): string {
+    return String(s ?? '')
+        .replace(/[\u2010-\u2015]/g, '-')              // hyphens / en-dash / em-dash -> -
+        .replace(/[\u2018\u2019\u201A\u201B]/g, "'")   // curly single quotes -> '
+        .replace(/[\u201C\u201D\u201E\u201F]/g, '"')   // curly double quotes -> "
+        .replace(/\u2026/g, '...')                     // ellipsis -> ...
+        .replace(/[\u00A0\u2028\u2029]/g, ' ')         // NBSP / line separators -> space
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ') // control chars (break JSON)
+        .replace(/[^\u0000-\u00FF]/g, '')              // anything latin1 cannot store (emojis)
+        .replace(/ {2,}/g, ' ')
+        .trim();
+}
+
+function sanitizeReport(value: any): any {
+    if (typeof value === 'string') return cleanReportString(value);
+    if (Array.isArray(value)) return value.map(sanitizeReport);
+    if (value && typeof value === 'object') {
+        const out: any = {};
+        for (const k of Object.keys(value)) out[k] = sanitizeReport(value[k]);
+        return out;
+    }
+    return value;
+}
+
 async function saveReport(
     project: PhoneProject, fromPhone: string, question: string, answer: string, report: any
 ): Promise<string> {
     await ensureReportTable();
     const uuid = uuidv4();
-    const datos = JSON.stringify({
+    const safe = sanitizeReport({
         title: report?.title || null,
         tables: Array.isArray(report?.tables) ? report.tables : [],
         charts: Array.isArray(report?.charts) ? report.charts : [],
         insights: Array.isArray(report?.insights) ? report.insights.map((s: any) => String(s)).slice(0, 6) : [],
     });
+    const datos = JSON.stringify(safe);
     await query(
         `INSERT INTO tblWhatsappReportes (UUID, IdProyecto, Telefono, Pregunta, Respuesta, Titulo, Datos, FechaAct)
          VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [uuid, project.IdProyecto, last10(fromPhone), question.slice(0, 500), (answer || '').slice(0, 2000), String(report?.title || '').slice(0, 250), datos]
+        [uuid, project.IdProyecto, last10(fromPhone), cleanReportString(question).slice(0, 500), cleanReportString(answer).slice(0, 2000), cleanReportString(String(report?.title || '')).slice(0, 250), datos]
     );
     return uuid;
 }
