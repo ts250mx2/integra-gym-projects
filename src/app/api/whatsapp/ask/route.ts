@@ -297,6 +297,21 @@ function buildSystemPrompt(projectCatalog: string, gymName: string, projectUuid:
     const y = getPart('year');
     const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y;
 
+    // Rangos de SEMANA (lunes-domingo) calculados en zona America/Monterrey, para dar
+    // al modelo fechas explícitas y que no improvise "esta semana"/"semana pasada".
+    const dParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Monterrey', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+    }).formatToParts(now);
+    const dp = (t: string) => dParts.find(p => p.type === t)?.value || '';
+    const isoW = ({ Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 } as Record<string, number>)[dp('weekday')] || 1;
+    const todayUTC = new Date(Date.UTC(Number(dp('year')), Number(dp('month')) - 1, Number(dp('day'))));
+    const fmtD = (dt: Date) => dt.toISOString().slice(0, 10);
+    const addDays = (dt: Date, n: number) => { const x = new Date(dt); x.setUTCDate(dt.getUTCDate() + n); return x; };
+    const weekStart = fmtD(addDays(todayUTC, -(isoW - 1)));
+    const weekEnd = fmtD(addDays(todayUTC, 7 - isoW));
+    const lastWeekStart = fmtD(addDays(todayUTC, -(isoW - 1) - 7));
+    const lastWeekEnd = fmtD(addDays(todayUTC, -isoW));
+
     const trainingPlanBaseUrl = baseUrl ? `${baseUrl}/es/wa-plan?projectUuid=${projectUuid}` : `/wa-plan?projectUuid=${projectUuid}`;
 
     return `Eres el AGENTE INTEGRA GYM respondiendo por WhatsApp para el gimnasio "${gymName || 'actual'}".
@@ -305,6 +320,10 @@ Eres un consultor experto en gestión, socios, asistencia y rentabilidad de gimn
 FECHA Y HORA ACTUAL: ${fecha}
 INTERPRETACIÓN DE PERÍODO:
   - "hoy" → DATE(fecha)=CURDATE()
+  - "ayer" → DATE(fecha)=CURDATE()-INTERVAL 1 DAY
+  - "esta semana" (lunes a domingo) → fecha BETWEEN '${weekStart} 00:00:00' AND '${weekEnd} 23:59:59'
+  - "semana pasada" → fecha BETWEEN '${lastWeekStart} 00:00:00' AND '${lastWeekEnd} 23:59:59'
+  - "últimos 7 días" → fecha >= CURDATE()-INTERVAL 6 DAY
   - "este mes" → MONTH(fecha)=${m} AND YEAR(fecha)=${y}
   - "mes pasado" → MONTH(fecha)=${pm} AND YEAR(fecha)=${py}
 
