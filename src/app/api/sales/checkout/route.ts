@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { projectQuery } from '@/lib/projectDb';
 import { v4 as uuidv4 } from 'uuid';
+import { PRODUCT_TIPO_CUOTA, registerSaleStockExit } from '@/lib/inventory';
 
 export async function POST(req: NextRequest) {
     try {
@@ -102,6 +103,8 @@ export async function POST(req: NextRequest) {
         );
 
         // 5. Insert Details (tblDetalleVentas)
+        const soldProducts: Array<{ idCuota: number; cantidad: number }> = [];
+
         for (const item of cart) {
             // Need Sesiones from tblCuotas corresponding to product
             const cuotaInfo = await projectQuery(projectId, 'SELECT Sesiones, Vigencia, TipoVigencia, TipoCuota, TipoMembresia FROM tblCuotas WHERE IdCuota = ?', [item.IdProducto]) as any[];
@@ -150,6 +153,11 @@ export async function POST(req: NextRequest) {
                 ]
             );
 
+            // Solo los productos afectan el inventario; las cuotas/membresias no.
+            if (dbTipoCuota === PRODUCT_TIPO_CUOTA) {
+                soldProducts.push({ idCuota: Number(item.IdProducto), cantidad: Number(item.quantity) || 0 });
+            }
+
             // Update Member Expiration if Membership (TipoMembresia = 1)
             if (Number(item.TipoMembresia) === 1 && idSocioVal > 0) {
                 await projectQuery(
@@ -173,6 +181,16 @@ export async function POST(req: NextRequest) {
                 [nextIdVenta, branchId, payment.IdFormaPago, payment.Monto, comision]
             );
         }
+
+        // 7. Descarga de inventario (no bloquea la venta si el inventario falla)
+        await registerSaleStockExit({
+            projectId,
+            branchId,
+            userId,
+            saleId: nextIdVenta,
+            folio: folioVenta,
+            items: soldProducts
+        });
 
         return NextResponse.json({ success: true, saleId: nextIdVenta, folioVenta });
 

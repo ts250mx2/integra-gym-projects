@@ -1,7 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { query, execute } from '@/lib/db';
+import { query } from '@/lib/db';
 import { cookies } from 'next/headers';
+import { projectQuery } from '@/lib/projectDb';
+import { ensureInventorySchema } from '@/lib/inventory';
 
 async function getProjectDB() {
     const cookieStore = await cookies();
@@ -23,35 +25,27 @@ async function getProjectDB() {
     };
 }
 
+/**
+ * Los proveedores viven en la BD del gimnasio, que puede estar en otro servidor
+ * que el pool principal. bypassVirtual = true mantiene la consulta en el
+ * gimnasio activo aunque la sesion este en modo Proyectos Integrados.
+ */
+async function providerQuery(projectId: number, sql: string, params: any[] = []) {
+    return await projectQuery(projectId, sql, params, undefined, true) as any;
+}
+
 export async function GET() {
     try {
         const project = await getProjectDB();
         if (!project) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        // Auto-create table if not exists (Lazy migration)
-        const createTableSql = `
-            CREATE TABLE IF NOT EXISTS \`${project.dbName}\`.tblProveedores (
-                IdProveedor INT AUTO_INCREMENT PRIMARY KEY,
-                Proveedor VARCHAR(255) NOT NULL,
-                RFC VARCHAR(20),
-                Contacto VARCHAR(255),
-                Direccion1 VARCHAR(255),
-                Direccion2 VARCHAR(255),
-                Pais VARCHAR(100),
-                Estado VARCHAR(100),
-                Localidad VARCHAR(100),
-                CodigoPostal VARCHAR(20),
-                Telefono VARCHAR(50),
-                CorreoElectronico VARCHAR(255),
-                Status INT DEFAULT 0,
-                FechaAct DATETIME DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        `;
-        await execute(createTableSql);
+        // Crea las tablas del modulo si la BD del gimnasio aun no las tiene.
+        await ensureInventorySchema(project.projectId);
 
-        const providers = await query(
-            `SELECT * FROM \`${project.dbName}\`.tblProveedores 
-             WHERE Status != 2 
+        const providers = await providerQuery(
+            project.projectId,
+            `SELECT * FROM tblProveedores
+             WHERE Status != 2
              ORDER BY Proveedor ASC`
         ) as any[];
 
@@ -74,9 +68,12 @@ export async function POST(req: NextRequest) {
             Telefono, CorreoElectronico
         } = body;
 
-        const result = await query(
-            `INSERT INTO \`${project.dbName}\`.tblProveedores 
-            (Proveedor, RFC, Contacto, Direccion1, Direccion2, Pais, Estado, Localidad, CodigoPostal, Telefono, CorreoElectronico, Status, FechaAct) 
+        await ensureInventorySchema(project.projectId);
+
+        const result = await providerQuery(
+            project.projectId,
+            `INSERT INTO tblProveedores
+            (Proveedor, RFC, Contacto, Direccion1, Direccion2, Pais, Estado, Localidad, CodigoPostal, Telefono, CorreoElectronico, Status, FechaAct)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
             [
                 Proveedor, RFC || null, Contacto || null,
@@ -106,8 +103,9 @@ export async function PUT(req: NextRequest) {
             Telefono, CorreoElectronico
         } = body;
 
-        await query(
-            `UPDATE \`${project.dbName}\`.tblProveedores SET 
+        await providerQuery(
+            project.projectId,
+            `UPDATE tblProveedores SET
              Proveedor = ?, RFC = ?, Contacto = ?,
              Direccion1 = ?, Direccion2 = ?, Pais = ?, Estado = ?, Localidad = ?, CodigoPostal = ?,
              Telefono = ?, CorreoElectronico = ?,
@@ -138,8 +136,9 @@ export async function DELETE(req: NextRequest) {
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
-        await query(
-            `UPDATE \`${project.dbName}\`.tblProveedores SET Status = 2, FechaAct = NOW() WHERE IdProveedor = ?`,
+        await providerQuery(
+            project.projectId,
+            'UPDATE tblProveedores SET Status = 2, FechaAct = NOW() WHERE IdProveedor = ?',
             [id]
         );
 
