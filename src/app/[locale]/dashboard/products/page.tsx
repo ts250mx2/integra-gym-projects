@@ -120,7 +120,7 @@ export default function ProductsPage() {
                                                         {product.CodigoBarras}
                                                     </td>
                                                     <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                                                        {product.Producto}
+                                                        {product.Cuota}
                                                     </td>
                                                     <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                                                         ${product.Precio}

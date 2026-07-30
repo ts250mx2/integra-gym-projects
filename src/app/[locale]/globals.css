@@ -326,3 +326,47 @@ table tr:hover {
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
+/* ── Data-viz tokens ───────────────────────────────────────────────────────────
+   Paleta categorica validada (CVD + contraste) contra las superficies reales de
+   la app: tarjeta glass sobre #0a0a0a en oscuro y sobre #f1f5f9 en claro.
+   Los valores por defecto son los de MODO OSCURO porque el dashboard es oscuro
+   por default; .light-theme los reescribe. Las graficas se escriben contra los
+   roles (--viz-series-1), nunca contra hex crudo.
+
+   No usar los colores neon para series: no pasan el piso de separacion CVD. */
+.viz-root {
+  --viz-series-1: #3987e5;  /* azul    */
+  --viz-series-2: #d95926;  /* naranja */
+  --viz-series-3: #199e70;  /* aqua    */
+  --viz-series-4: #c98500;  /* amarillo*/
+
+  --viz-grid: #2c2c2a;
+  --viz-axis: #383835;
+  --viz-ink: #ffffff;
+  --viz-ink-secondary: #c3c2b7;
+  --viz-ink-muted: #898781;
+  --viz-tooltip-bg: #161616;
+  --viz-surface: #161616;
+
+  --viz-good: #0ca30c;
+  --viz-critical: #d03b3b;
+}
+
+.light-theme .viz-root {
+  --viz-series-1: #2a78d6;
+  --viz-series-2: #eb6834;
+  --viz-series-3: #1baf7a;
+  --viz-series-4: #eda100;
+
+  --viz-grid: #e1e0d9;
+  --viz-axis: #c3c2b7;
+  --viz-ink: #0b0b0b;
+  --viz-ink-secondary: #52514e;
+  --viz-ink-muted: #898781;
+  --viz-tooltip-bg: #ffffff;
+  --viz-surface: #fcfdfe;
+
+  --viz-good: #006300;
+  --viz-critical: #d03b3b;
+}

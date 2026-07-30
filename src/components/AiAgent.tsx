@@ -667,8 +667,10 @@ export default function AiAgent({ mode = 'floating', version, userId, projectId 
 
     // ── EMBEDDED ──────────────────────────────────────────────────────────
     if (mode === 'embedded') {
+        // Alto = viewport menos el cromo real del dashboard: header 58px,
+        // padding 2rem×2 del <main> y el título de la página (~64px).
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)', minHeight: 480 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 190px)', minHeight: 480 }}>
                 <div style={{ flex: 1, borderRadius: 18, border: `1px solid ${BORDER}`, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0, background: PANEL_BG }}>
                     <ChatPanel {...sharedProps} mode="embedded" />
                 </div>

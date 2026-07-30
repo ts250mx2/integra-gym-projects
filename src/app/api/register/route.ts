@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { execute, getConnection, query } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 
+// Los proyectos creados desde el registro publico siempre nacen en la version actual
+const NEW_PROJECT_VERSION = '2.0';
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
@@ -34,9 +37,9 @@ export async function POST(req: NextRequest) {
 
             // 3. Save to tblProyectos
             const [projectResult]: any = await connection.execute(
-                `INSERT INTO tblProyectos (Proyecto, BaseDatos, Servidor, UsuarioBD, PasswordBD, Status, FechaAct, Idioma, Pais, DominioIM, UUID) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [gymName, dbName, connection.config.host, connection.config.user, connection.config.password, 0, now, language, country, domain, uuid]
+                `INSERT INTO tblProyectos (Proyecto, BaseDatos, Servidor, UsuarioBD, PasswordBD, Status, FechaAct, Idioma, Pais, DominioIM, UUID, Version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [gymName, dbName, connection.config.host, connection.config.user, connection.config.password, 0, now, language, country, domain, uuid, NEW_PROJECT_VERSION]
             );
             const projectId = projectResult.insertId;
 
