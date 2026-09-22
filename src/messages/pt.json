@@ -59,6 +59,7 @@
         "yes": "Sim"
     },
     "Sidebar": {
+        "importMembers": "Importar socios",
         "home": "Início",
         "search": "Pesquisar...",
         "config": "Configuração",
@@ -494,5 +495,41 @@
     "errorSave": "Nao foi possivel registrar a compra.",
     "errorCancel": "Nao foi possivel cancelar a compra.",
     "errorAlreadyCancelled": "Esta compra ja estava cancelada."
-  }
+  },
+    "MembersImport": {
+        "title": "Importar socios",
+        "subtitle": "Baixe o modelo, preencha seus socios e envie o arquivo.",
+        "downloadTemplate": "Baixar modelo",
+        "branch": "Filial",
+        "fileLabel": "Arquivo do modelo (.xlsx ou .csv)",
+        "review": "Conferir arquivo",
+        "reviewing": "Conferindo...",
+        "importNow": "Importar",
+        "importing": "Importando...",
+        "noFile": "Escolha primeiro o arquivo do modelo.",
+        "errorGeneric": "Nao foi possivel processar o arquivo.",
+        "rule1": "Os socios sao importados na filial que voce escolher aqui.",
+        "rule2": "A linha com IdSocio atualiza esse socio; sem IdSocio cria um novo.",
+        "rule3": "Uma celula vazia nao apaga o dado: o campo fica como estava.",
+        "rule4": "Nada e salvo ate voce conferir o arquivo e clicar em Importar.",
+        "cardCreates": "Cadastros",
+        "cardUpdates": "Atualizacoes",
+        "cardSkipped": "Sem mudancas",
+        "cardErrors": "Com erro",
+        "previewTitle": "Isto e o que vai acontecer em {branch}. Nada foi salvo ainda.",
+        "pendingTitle": "Linhas que nao foram aplicadas",
+        "colLine": "Linha",
+        "colAction": "Acao",
+        "colMember": "IdSocio / Codigo",
+        "colName": "Nome",
+        "colDetail": "Detalhe",
+        "noRows": "Nenhuma linha para mostrar",
+        "moreRows": "e mais {count} linhas",
+        "truncated": "O arquivo tem mais de {max} linhas; so as primeiras {max} foram lidas.",
+        "resultDone": "Pronto: {created} cadastros e {updated} atualizacoes em {branch}.",
+        "action_create": "Cadastro",
+        "action_update": "Atualiza",
+        "action_skip": "Sem mudancas",
+        "action_error": "Erro"
+    }
 }

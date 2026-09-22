@@ -29,7 +29,8 @@ import {
     PieChart,
     LineChart,
     Brain,
-    ClipboardList
+    ClipboardList,
+    UploadCloud
 } from 'lucide-react';
 import packageJson from '../../package.json';
 
@@ -112,6 +113,7 @@ export default function DashboardSidebar({ isCollapsed }: Props) {
             setIsOpen: setSalesOpen,
             items: [
                 { href: '/dashboard/sales/members', icon: <UserCheck size={18} />, label: t('members') },
+                { href: '/dashboard/sales/members/import', icon: <UploadCloud size={18} />, label: t('importMembers') || 'Importar socios' },
                 { href: '/dashboard/sales', icon: <CreditCard size={18} />, label: t('pos') },
                 { href: '/dashboard/sales/visits', icon: <ReceiptText size={18} />, label: t('visits') },
             ]

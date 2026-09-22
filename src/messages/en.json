@@ -62,6 +62,7 @@
         "yes": "Yes"
     },
     "Sidebar": {
+        "importMembers": "Import members",
         "home": "Home",
         "search": "Search...",
         "config": "Settings",
@@ -529,5 +530,41 @@
     "errorSave": "The purchase could not be registered.",
     "errorCancel": "The purchase could not be cancelled.",
     "errorAlreadyCancelled": "This purchase was already cancelled."
-  }
+  },
+    "MembersImport": {
+        "title": "Import members",
+        "subtitle": "Download the template, fill in your members and upload the file.",
+        "downloadTemplate": "Download template",
+        "branch": "Branch",
+        "fileLabel": "Template file (.xlsx or .csv)",
+        "review": "Check file",
+        "reviewing": "Checking...",
+        "importNow": "Import",
+        "importing": "Importing...",
+        "noFile": "Choose the template file first.",
+        "errorGeneric": "The file could not be processed.",
+        "rule1": "Members are imported into the branch you pick here.",
+        "rule2": "A row with IdSocio updates that member; a row without it creates a new one.",
+        "rule3": "An empty cell does not erase data: that field stays as it was.",
+        "rule4": "Nothing is saved until you check the file and press Import.",
+        "cardCreates": "New members",
+        "cardUpdates": "Updates",
+        "cardSkipped": "Unchanged",
+        "cardErrors": "With errors",
+        "previewTitle": "This is what will happen in {branch}. Nothing is saved yet.",
+        "pendingTitle": "Rows that were not applied",
+        "colLine": "Row",
+        "colAction": "Action",
+        "colMember": "IdSocio / Code",
+        "colName": "Name",
+        "colDetail": "Detail",
+        "noRows": "No rows to show",
+        "moreRows": "and {count} more rows",
+        "truncated": "The file has more than {max} rows; only the first {max} were read.",
+        "resultDone": "Done: {created} new members and {updated} updates in {branch}.",
+        "action_create": "Create",
+        "action_update": "Update",
+        "action_skip": "Unchanged",
+        "action_error": "Error"
+    }
 }

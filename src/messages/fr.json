@@ -59,6 +59,7 @@
         "yes": "Oui"
     },
     "Sidebar": {
+        "importMembers": "Importer des membres",
         "home": "Accueil",
         "search": "Rechercher...",
         "config": "Configuration",
@@ -494,5 +495,41 @@
     "errorSave": "Impossible d’enregistrer l’achat.",
     "errorCancel": "Impossible d’annuler l’achat.",
     "errorAlreadyCancelled": "Cet achat etait deja annule."
-  }
+  },
+    "MembersImport": {
+        "title": "Importer des membres",
+        "subtitle": "Telechargez le modele, saisissez vos membres et envoyez le fichier.",
+        "downloadTemplate": "Telecharger le modele",
+        "branch": "Succursale",
+        "fileLabel": "Fichier du modele (.xlsx ou .csv)",
+        "review": "Verifier le fichier",
+        "reviewing": "Verification...",
+        "importNow": "Importer",
+        "importing": "Importation...",
+        "noFile": "Choisissez le fichier du modele.",
+        "errorGeneric": "Le fichier n a pas pu etre traite.",
+        "rule1": "Les membres sont importes dans la succursale choisie ici.",
+        "rule2": "Une ligne avec IdSocio met a jour ce membre; sans IdSocio elle en cree un nouveau.",
+        "rule3": "Une cellule vide n efface rien: le champ reste tel quel.",
+        "rule4": "Rien n est enregistre tant que le fichier n a pas ete verifie et importe.",
+        "cardCreates": "Creations",
+        "cardUpdates": "Mises a jour",
+        "cardSkipped": "Sans changement",
+        "cardErrors": "En erreur",
+        "previewTitle": "Voici ce qui va se passer dans {branch}. Rien n est encore enregistre.",
+        "pendingTitle": "Lignes non appliquees",
+        "colLine": "Ligne",
+        "colAction": "Action",
+        "colMember": "IdSocio / Code",
+        "colName": "Nom",
+        "colDetail": "Detail",
+        "noRows": "Aucune ligne a afficher",
+        "moreRows": "et {count} lignes de plus",
+        "truncated": "Le fichier depasse {max} lignes; seules les {max} premieres ont ete lues.",
+        "resultDone": "Termine: {created} creations et {updated} mises a jour dans {branch}.",
+        "action_create": "Creation",
+        "action_update": "Mise a jour",
+        "action_skip": "Sans changement",
+        "action_error": "Erreur"
+    }
 }

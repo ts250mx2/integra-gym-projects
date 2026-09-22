@@ -123,7 +123,8 @@
     "purchasesAnalytics": "Analíticas de Compras",
     "aiAgent": "Agente IA",
     "projects": "Proyectos",
-    "alerts": "Alertas"
+    "alerts": "Alertas",
+    "importMembers": "Importar socios"
   },
   "Providers": {
     "title": "Proveedores",
@@ -537,5 +538,41 @@
     "errorSave": "No se pudo registrar la compra.",
     "errorCancel": "No se pudo cancelar la compra.",
     "errorAlreadyCancelled": "Esta compra ya estaba cancelada."
+  },
+  "MembersImport": {
+    "title": "Importar socios",
+    "subtitle": "Descarga la plantilla, captura a tus socios y sube el archivo.",
+    "downloadTemplate": "Descargar plantilla",
+    "branch": "Sucursal",
+    "fileLabel": "Archivo de la plantilla (.xlsx o .csv)",
+    "review": "Revisar archivo",
+    "reviewing": "Revisando...",
+    "importNow": "Importar",
+    "importing": "Importando...",
+    "noFile": "Primero elige el archivo de la plantilla.",
+    "errorGeneric": "No se pudo procesar el archivo.",
+    "rule1": "Los socios se importan en la sucursal que elijas aqui.",
+    "rule2": "El renglon con IdSocio actualiza a ese socio; sin IdSocio se da de alta uno nuevo.",
+    "rule3": "Una celda vacia no borra el dato: ese campo se queda como estaba.",
+    "rule4": "Nada se guarda hasta que revisas el archivo y presionas Importar.",
+    "cardCreates": "Altas",
+    "cardUpdates": "Actualizaciones",
+    "cardSkipped": "Sin cambios",
+    "cardErrors": "Con error",
+    "previewTitle": "Esto es lo que va a pasar en {branch}. Todavia no se guarda nada.",
+    "pendingTitle": "Renglones que no se aplicaron",
+    "colLine": "Renglon",
+    "colAction": "Accion",
+    "colMember": "IdSocio / Codigo",
+    "colName": "Nombre",
+    "colDetail": "Detalle",
+    "noRows": "Sin renglones que mostrar",
+    "moreRows": "y {count} renglones mas",
+    "truncated": "El archivo trae mas de {max} renglones; solo se tomaron los primeros {max}.",
+    "resultDone": "Listo: {created} altas y {updated} actualizaciones en {branch}.",
+    "action_create": "Alta",
+    "action_update": "Actualiza",
+    "action_skip": "Sin cambios",
+    "action_error": "Error"
   }
 }
