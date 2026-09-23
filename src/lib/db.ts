@@ -2,10 +2,16 @@ import mysql from 'mysql2/promise';
 
 const globalForDb = global as unknown as { mysqlPool: mysql.Pool };
 
+const REQUIRED_DB_ENV = ['DB_HOST', 'DB_USER', 'DB_PASSWORD'] as const;
+const missingDbEnv = REQUIRED_DB_ENV.filter((key) => !process.env[key]);
+if (missingDbEnv.length > 0) {
+    throw new Error(`Faltan variables de entorno de la BD: ${missingDbEnv.join(', ')}. Defínelas en .env`);
+}
+
 const pool = globalForDb.mysqlPool || mysql.createPool({
-    host: process.env.DB_HOST || '74.208.192.90',
-    user: process.env.DB_USER || 'kyk',
-    password: process.env.DB_PASSWORD || 'merkurio',
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME || 'BDIntegraProjects',
     waitForConnections: true,
     connectionLimit: 5, // Reduced from 10 to 5
